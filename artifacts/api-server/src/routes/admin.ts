@@ -25,6 +25,31 @@ import { sanitizeLikePattern } from "../utils/db-utils.js";
 
 const router: IRouter = Router();
 
+interface QueryCountResult {
+  count: number | string;
+}
+
+interface QueryTotalResult {
+  total: number | string;
+}
+
+interface QueryRevenueByDayResult {
+  date: string | Date;
+  revenue_cents: number | string;
+  orders: number | string;
+}
+
+interface QueryTopPackResult {
+  id: number;
+  title: string;
+  slug: string;
+  thumbnail_url: string | null;
+  total_downloads: number | string;
+  avg_rating: string | null;
+  review_count: number | string;
+  revenue_cents: number | string;
+}
+
 // Defence-in-depth: apply auth + admin check on every handler
 router.use(requireAuth as any);
 router.use(requireAdmin as any);
@@ -116,7 +141,7 @@ router.get("/dashboard", async (req: AuthRequest, _res, next): Promise<void> => 
         priceCents: i.priceCents, downloadCount: i.downloadCount, firstDownloadedAt: null,
       })),
     })),
-    revenueByDay: (revenueByDay.rows || []).map((r: any) => ({
+    revenueByDay: ((revenueByDay.rows as unknown) as QueryRevenueByDayResult[] || []).map(r => ({
       date: r.date,
       revenueCents: Number(r.revenue_cents || 0),
       orders: Number(r.orders || 0),
@@ -160,16 +185,16 @@ router.get("/analytics", async (req: AuthRequest, res): Promise<void> => {
 
   res.json({
     period,
-    totalRevenueCents: Number((totalRevResult.rows as any)[0]?.total || 0),
-    totalOrders: Number((totalOrdersResult.rows as any)[0]?.count || 0),
-    totalDownloads: Number((totalDownloadsResult.rows as any)[0]?.total || 0),
-    newUsers: Number((newUsersResult.rows as any)[0]?.count || 0),
-    revenueByDay: (revenueByDay.rows || []).map((r: any) => ({
+    totalRevenueCents: Number(((totalRevResult.rows as unknown) as QueryTotalResult[])[0]?.total || 0),
+    totalOrders: Number(((totalOrdersResult.rows as unknown) as QueryCountResult[])[0]?.count || 0),
+    totalDownloads: Number(((totalDownloadsResult.rows as unknown) as QueryTotalResult[])[0]?.total || 0),
+    newUsers: Number(((newUsersResult.rows as unknown) as QueryCountResult[])[0]?.count || 0),
+    revenueByDay: ((revenueByDay.rows as unknown) as QueryRevenueByDayResult[] || []).map(r => ({
       date: r.date,
       revenueCents: Number(r.revenue_cents || 0),
       orders: Number(r.orders || 0),
     })),
-    topPacks: (topPacksResult.rows || []).map((p: any) => ({
+    topPacks: ((topPacksResult.rows as unknown) as QueryTopPackResult[] || []).map(p => ({
       id: p.id,
       title: p.title,
       slug: p.slug,
