@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { desc, ilike, or, and, eq, sql, inArray } from "drizzle-orm";
 import { db, packsTable, categoriesTable } from "@workspace/db";
+import { sanitizeLikePattern } from "../utils/db-utils.js";
 import { searchLimit } from "../lib/rate-limiters.js";
 import { z } from "zod";
 
@@ -11,10 +12,6 @@ const searchQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
-
-function sanitizeSearchQuery(q: string): string {
-  return q.replace(/[%_\\]/g, "\\$&");
-}
 
 router.get("/search", searchLimit, async (req, res): Promise<void> => {
   const parsed = searchQuerySchema.safeParse(req.query);
@@ -31,7 +28,7 @@ router.get("/search", searchLimit, async (req, res): Promise<void> => {
     return;
   }
 
-  const sanitized = sanitizeSearchQuery(q);
+  const sanitized = sanitizeLikePattern(q);
   const searchPattern = `%${sanitized}%`;
   const conditions = [
     eq(packsTable.status, "PUBLISHED"),

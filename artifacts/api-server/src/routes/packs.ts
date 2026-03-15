@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, desc, asc, sql, and, gte, lte, ilike, or, inArray } from "drizzle-orm";
+import { sanitizeLikePattern } from "../utils/db-utils.js";
 import { db, packsTable, categoriesTable, ordersTable, orderItemsTable, promptsTable } from "@workspace/db";
 import { optionalAuth, requireAuth, type AuthRequest } from "../middlewares/auth.js";
 import { generatePackPDF } from "../lib/pdf-generator.js";
@@ -19,10 +20,6 @@ const packsQuerySchema = z.object({
   isFree: z.string().optional(),
   sort: z.enum(["newest", "popular", "price_asc", "price_desc", "rating"]).optional(),
 });
-
-function sanitizeSearchQuery(q: string): string {
-  return q.replace(/[%_\\]/g, "\\$&");
-}
 
 function formatPack(pack: any, category?: any) {
   return {
@@ -91,7 +88,7 @@ router.get("/packs", optionalAuth, async (req: AuthRequest, res): Promise<void> 
     }
 
     if (search) {
-      const sanitized = sanitizeSearchQuery(search);
+      const sanitized = sanitizeLikePattern(search);
       const q = `%${sanitized}%`;
       conditions.push(or(ilike(packsTable.title, q), ilike(packsTable.shortDescription, q))!);
     }

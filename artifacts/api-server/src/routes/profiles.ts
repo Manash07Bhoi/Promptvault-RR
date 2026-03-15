@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, desc, ilike, or, sql, ne } from "drizzle-orm";
+import { sanitizeLikePattern } from "../utils/db-utils.js";
 import {
   db, usersTable, packsTable, userFollowsTable, userActivityTable,
   reviewsTable, orderItemsTable, ordersTable, creatorApplicationsTable
@@ -127,7 +128,7 @@ router.get("/users/:username/followers", async (req, res): Promise<void> => {
     .where(
       and(
         eq(userFollowsTable.followingId, user.id),
-        q ? or(ilike(usersTable.displayName, `%${q}%`), ilike(usersTable.username, `%${q}%`)) : undefined
+        q ? or(ilike(usersTable.displayName, `%${sanitizeLikePattern(q)}%`), ilike(usersTable.username, `%${sanitizeLikePattern(q)}%`)) : undefined
       )
     )
     .orderBy(desc(userFollowsTable.createdAt))
@@ -160,7 +161,7 @@ router.get("/users/:username/following", async (req, res): Promise<void> => {
     .where(
       and(
         eq(userFollowsTable.followerId, user.id),
-        q ? or(ilike(usersTable.displayName, `%${q}%`), ilike(usersTable.username, `%${q}%`)) : undefined
+        q ? or(ilike(usersTable.displayName, `%${sanitizeLikePattern(q)}%`), ilike(usersTable.username, `%${sanitizeLikePattern(q)}%`)) : undefined
       )
     )
     .orderBy(desc(userFollowsTable.createdAt))
@@ -274,7 +275,7 @@ router.get("/creators", async (req, res): Promise<void> => {
       and(
         eq(usersTable.isCreator, true),
         eq(usersTable.profileVisibility, "public"),
-        q ? or(ilike(usersTable.displayName, `%${q}%`), ilike(usersTable.username, `%${q}%`)) : undefined,
+        q ? or(ilike(usersTable.displayName, `%${sanitizeLikePattern(q)}%`), ilike(usersTable.username, `%${sanitizeLikePattern(q)}%`)) : undefined,
         minPacks ? sql`${usersTable.publicPackCount} >= ${parseInt(minPacks)}` : undefined,
       )
     )

@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, desc, ilike, or, sql } from "drizzle-orm";
+import { sanitizeLikePattern } from "../utils/db-utils.js";
 import {
   db, usersTable, communityPromptsTable, communityPromptVotesTable
 } from "@workspace/db";
@@ -25,7 +26,7 @@ router.get("/community/prompts", async (req: AuthRequest, res): Promise<void> =>
   ) as any;
 
   if (q) {
-    whereClause = and(whereClause, ilike(communityPromptsTable.body, `%${q}%`));
+    whereClause = and(whereClause, ilike(communityPromptsTable.body, `%${sanitizeLikePattern(q)}%`));
   }
   if (category && category !== "All") {
     whereClause = and(whereClause, eq(communityPromptsTable.aiTool, category));
