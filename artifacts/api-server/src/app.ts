@@ -23,6 +23,7 @@ const allowedOrigins = [
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
+
     // Exact allowed origins always permitted
     if (allowedOrigins.includes(origin)) return callback(null, true);
     // In production: only exact allowed origins (no wildcard subdomain matching)
