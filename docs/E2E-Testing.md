@@ -1242,3 +1242,52 @@ The project is considered **test-complete** when:
 ---
 
 *Run the full test suite and update the Status column above before any production deployment.*
+
+---
+
+## 15. Additional End-to-End Test Specifications (Phase 2 Expansion)
+
+### Spec 5: Creator Onboarding & Pack Submission
+**Goal**: Verify a user can apply to become a creator, get approved, and submit a custom prompt pack for review.
+
+- **Test Steps:**
+  1. Log in as a User.
+  2. Navigate to `/become-a-creator` and submit the application form.
+  3. Log out, then log in as an Admin.
+  4. Navigate to `/admin/creators` and approve the application.
+  5. Log out, then log back in as the Creator.
+  6. Navigate to `/creator/dashboard` -> `/creator/packs/new`.
+  7. Fill out the pack builder form (Title, Description, Price, Tags, 3 Prompts).
+  8. Click "Submit for Review".
+  9. Log in as Admin.
+  10. Verify the pack appears in `/admin/moderation` with `status === 'PENDING_REVIEW'`.
+- **Expected Result:** Community creators can successfully author packs that enter the administrative moderation queue.
+- **Failure Points:** Missing `creatorId` binding on the API, empty stub rendering on `/creator/packs/new`, missing notification emails.
+
+### Spec 6: Pro Subscription & Credit Redemption
+**Goal**: Verify a user can subscribe to the Pro tier and redeem a monthly pack credit at checkout.
+
+- **Test Steps:**
+  1. Log in as a Buyer.
+  2. Navigate to `/pricing` and click "Upgrade to Pro".
+  3. Complete the Stripe Subscription checkout flow.
+  4. Verify the user is redirected to `/dashboard/subscription` and sees 5 available credits.
+  5. Navigate to a paid pack's detail page (e.g., $15.00 pack).
+  6. Click "Buy Now".
+  7. In the cart/checkout screen, select "Apply 1 Pack Credit".
+  8. Verify the order total becomes $0.00.
+  9. Complete the checkout.
+  10. Verify the pack is added to `/dashboard/purchases` and credit balance decreases by 1.
+- **Expected Result:** Subscription lifecycle and credit redemption operate flawlessly without triggering standard Stripe card charges for credit-based orders.
+- **Failure Points:** Stripe Webhook for `invoice.paid` fails to grant credits, credit balance race conditions, UI displaying placeholder Stripe URLs.
+
+### Spec 7: Semantic Search & AI Discovery
+**Goal**: Verify the AI-powered hybrid search returns relevant results even with zero exact keyword matches.
+
+- **Test Steps:**
+  1. Ensure a pack titled "Advanced ChatGPT Copywriting Formulas" exists.
+  2. Navigate to `/search`.
+  3. Type "write better marketing emails with AI".
+  4. Verify the search results include the "Advanced ChatGPT Copywriting Formulas" pack.
+- **Expected Result:** Semantic cosine similarity matching successfully maps intent to pack content.
+- **Failure Points:** `pgvector` not enabled, OpenAI Embeddings API fails or times out, frontend falls back to basic `ILIKE` search yielding zero results.

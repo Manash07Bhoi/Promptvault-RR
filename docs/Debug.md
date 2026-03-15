@@ -625,3 +625,51 @@ Use this checklist to verify production readiness. All items must be ✅ before 
 ---
 
 *This document is a living reference. Update issue status as fixes are applied.*
+
+### 1.5 Additional Identified Security Vulnerabilities (Audit Update) 🔴
+
+#### VULN-022: Incomplete Admin Self-Modification Guard
+- **Risk:** An admin can modify their own role via `PATCH /users/:id`, causing privilege escalation or system lockout.
+- **Test:** Submit `PATCH /api/admin/users/:adminId` changing the role to `USER` or `SUPER_ADMIN` using the admin's own token.
+- **Location:** `artifacts/api-server/src/routes/admin.ts`
+- **Fix Required:** Add `if (id === req.user!.userId) { res.status(400).json({ error: "You cannot modify your own account via the admin panel" }); return; }` to the `PATCH` route. The `DELETE` route has this guard, but `PATCH` currently misses it.
+
+#### VULN-023: Loose CORS Configuration in Production
+- **Risk:** The CORS configuration in `app.ts` uses `.includes(".replit.dev")` and `.includes("localhost")` for origin checking when `isDev` is true. If `NODE_ENV` is misconfigured or a bypass occurs, attackers could easily spoof origins using crafted subdomains.
+- **Location:** `artifacts/api-server/src/app.ts`
+- **Fix Required:** Enforce exact string matching for `process.env.CLIENT_URL` and `process.env.APP_URL` exclusively in production. Remove all `.includes` wildcard logic outside of local development.
+
+---
+
+### 2.5 Additional Application Bugs (Audit Update) 🟠
+
+#### BUG-025: Mock Data Rendering in Production UI
+- **Symptom:** Several critical dashboard screens render hardcoded placeholder data instead of fetching from the API.
+- **Location:**
+  - `artifacts/promptvault/src/pages/dashboard/team.tsx` (Uses `MOCK_MEMBERS`)
+  - `artifacts/promptvault/src/pages/admin/experiments.tsx` (Uses `MOCK_EXPERIMENTS`)
+- **Fix Required:** Replace static arrays with TanStack Query hooks fetching from the appropriate REST endpoints.
+
+#### BUG-026: Subscription Checkout Uses Dummy URL
+- **Symptom:** Clicking "Upgrade to Pro" redirects the user to a hardcoded URL (`https://checkout.stripe.com/pay/placeholder`).
+- **Location:** `artifacts/api-server/src/routes/subscriptions.ts` (Line 39)
+- **Fix Required:** Implement standard Stripe Checkout Session creation for subscriptions (`mode: 'subscription'`) using the `stripe` SDK.
+
+---
+
+### 4.4 Missing Phase 2 Database Schema Requirements
+The PRD mandates a significant expansion of the database schema for Phase 2 that has not been implemented in `lib/db/src/schema/`.
+
+**Critical Missing Tables:**
+1. `pack_embeddings` (Requires `VECTOR(1536)` for semantic search).
+2. `subscription_credits` (Tracks unused monthly pack credits for Pro users).
+3. `team_workspaces` and `team_members` (Required for the Teams subscription tier).
+4. `affiliate_programs` and `affiliate_conversions` (Required for creator and user affiliate tracking).
+5. `user_recommendations` (Cache table for the nightly collaborative filtering job).
+6. `community_prompts` (Free public prompt submissions).
+
+**Missing Fields on Existing Tables:**
+1. `users`: Missing `username`, `social links`, `specialties`, `isCreator`, `subscriptionPlan`, `trustScore`, etc.
+2. `prompt_packs`: Missing `creatorId` (FK) and `packType` (single/bundle).
+
+*Action Required:* Create Drizzle schema definitions for all above entities, generate migrations (`drizzle-kit generate`), and apply them before commencing Phase 2 feature development.
