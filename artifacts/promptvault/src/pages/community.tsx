@@ -31,7 +31,30 @@ const SORT_OPTIONS = [
 
 const AI_TOOLS = ["ChatGPT", "Claude", "Gemini", "Midjourney", "DALL-E", "Stable Diffusion", "Perplexity", "Copilot", "Coding", "Marketing", "Writing", "Business", "Other"];
 
-function PromptCard({ prompt, onVote }: { prompt: any; onVote: (id: number, hasVoted: boolean) => void }) {
+interface CommunityPrompt {
+  id: number;
+  body: string;
+  aiTool: string | null;
+  upvoteCount: number;
+  commentCount: number;
+  status: "pending" | "approved" | "featured" | "removed";
+  createdAt: string;
+  userId: number;
+  displayName: string;
+  username: string | null;
+  avatarUrl: string | null;
+  isVerified: boolean;
+  hasVoted: boolean;
+}
+
+interface CommunityPromptListResponse {
+  prompts: CommunityPrompt[];
+  total: number;
+  page: number;
+  hasMore: boolean;
+}
+
+function PromptCard({ prompt, onVote }: { prompt: CommunityPrompt; onVote: (id: number, hasVoted: boolean) => void }) {
   const { isAuthenticated } = useAuthStore();
 
   return (
@@ -142,7 +165,7 @@ function SubmitPromptDialog({ onSubmitted }: { onSubmitted: () => void }) {
       setAiTool("");
       onSubmitted();
     },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   if (!isAuthenticated) {
@@ -214,7 +237,7 @@ export default function CommunityPage() {
   const { accessToken, isAuthenticated } = useAuthStore();
   const { toast } = useToast();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading } = useQuery<CommunityPromptListResponse>({
     queryKey: ["community-prompts", search, category, sort, page],
     queryFn: async () => {
       const params = new URLSearchParams({ q: search, sort, page: String(page) });
@@ -234,7 +257,7 @@ export default function CommunityPage() {
       return res.json();
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["community-prompts"] }),
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   const handleVote = (id: number, hasVoted: boolean) => {
@@ -336,7 +359,7 @@ export default function CommunityPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {prompts.map((p: any) => (
+            {prompts.map((p) => (
               <PromptCard key={p.id} prompt={p} onVote={handleVote} />
             ))}
           </div>
