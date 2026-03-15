@@ -565,18 +565,19 @@ async function processJob(jobId: number, jobType: string, packId?: number, paylo
         prompts = PROMPT_LIBRARY[categoryName] || PROMPT_LIBRARY["Marketing"];
       }
 
-      let sortOrder = 1;
-      for (const prompt of prompts) {
-        await db.insert(promptsTable).values({
+      if (prompts.length > 0) {
+        let sortOrder = 1;
+        const promptsToInsert = prompts.map(prompt => ({
           packId,
           title: prompt.title || "Untitled",
           body: prompt.body || "",
           description: prompt.description || "",
           aiTool: prompt.aiTool || "ChatGPT",
           useCase: prompt.useCase || "General",
-          status: "GENERATED",
+          status: "GENERATED" as const,
           sortOrder: sortOrder++,
-        });
+        }));
+        await db.insert(promptsTable).values(promptsToInsert);
       }
 
       await db.update(packsTable).set({ promptCount: prompts.length, updatedAt: new Date() }).where(eq(packsTable.id, packId));
