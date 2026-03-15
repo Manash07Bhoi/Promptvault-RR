@@ -91,6 +91,7 @@ export default function Search() {
               <button 
                 type="button"
                 onClick={() => setQuery("")}
+                aria-label="Clear search"
                 className="absolute right-6 top-1/2 -translate-y-1/2 p-1 bg-muted hover:bg-muted-foreground/20 rounded-full transition-colors"
               >
                 <X className="w-4 h-4" />
@@ -129,7 +130,7 @@ export default function Search() {
                       className="group flex items-center gap-2 px-4 py-2 bg-card border border-border rounded-full cursor-pointer hover:border-primary/50 transition-colors"
                     >
                       <span className="text-sm">{term}</span>
-                      <button onClick={(e) => removeRecent(term, e)} className="text-muted-foreground hover:text-destructive transition-colors">
+                      <button onClick={(e) => removeRecent(term, e)} aria-label={`Remove recent search for ${term}`} className="text-muted-foreground hover:text-destructive transition-colors">
                         <X className="w-3 h-3" />
                       </button>
                     </div>
