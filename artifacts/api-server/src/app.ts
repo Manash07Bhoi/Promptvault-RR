@@ -24,8 +24,8 @@ app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
     // Exact allowed origins always permitted
-    if (allowedOrigins.some(o => origin.startsWith(o))) return callback(null, true);
-    // In production: only exact allowed origins (no wildcard subdomain matching)
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    // In production: only exact allowed origins
     if (!isDev) return callback(null, false);
     // In development: allow all Replit preview domains and localhost
     const devAllowed =

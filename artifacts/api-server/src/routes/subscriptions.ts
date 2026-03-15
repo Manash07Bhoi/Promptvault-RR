@@ -69,9 +69,12 @@ router.post("/subscription/upgrade", requireAuth, async (req: AuthRequest, res):
     sessionParams.customer_email = user.email;
   }
 
-  const session = await stripe.checkout.sessions.create(sessionParams);
-
-  res.json({ checkoutUrl: session.url });
+  try {
+    const session = await stripe.checkout.sessions.create(sessionParams);
+    res.json({ checkoutUrl: session.url });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to create subscription checkout session" });
+  }
 });
 
 // POST /api/subscription/cancel

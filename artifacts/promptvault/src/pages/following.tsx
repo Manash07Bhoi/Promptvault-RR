@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CheckCircle, Package, Users, Search, ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
 export default function FollowingPage() {

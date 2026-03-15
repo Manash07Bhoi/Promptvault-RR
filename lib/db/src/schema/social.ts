@@ -4,6 +4,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { packsTable } from "./packs.js";
 
 // ============================================================
 // USER FOLLOWS
@@ -642,3 +643,26 @@ export type Notification = typeof notificationsTable.$inferSelect;
 export const insertSupportTicketSchema = createInsertSchema(supportTicketsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertSupportTicket = z.infer<typeof insertSupportTicketSchema>;
 export type SupportTicket = typeof supportTicketsTable.$inferSelect;
+
+// Custom vector type for pgvector
+import { customType } from "drizzle-orm/pg-core";
+
+const vector = customType<{ data: number[]; driverData: string }>({
+  dataType() {
+    return 'vector(1536)';
+  },
+  toDriver(value: number[]): string {
+    return `[${value.join(',')}]`;
+  },
+  fromDriver(value: string): number[] {
+    return value.replace(/\[|\]/g, '').split(',').map(Number);
+  },
+});
+
+export const packEmbeddingsTable = pgTable("pack_embeddings", {
+  packId: integer("pack_id").primaryKey().references(() => packsTable.id, { onDelete: "cascade" }),
+  embedding: vector("embedding"),
+  model: text("model").notNull().default("text-embedding-3-small"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
