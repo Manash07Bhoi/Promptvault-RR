@@ -24,15 +24,22 @@ app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
     // Exact allowed origins always permitted
-    if (allowedOrigins.some(o => origin.startsWith(o))) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
     // In production: only exact allowed origins (no wildcard subdomain matching)
     if (!isDev) return callback(null, false);
-    // In development: allow all Replit preview domains and localhost
-    const devAllowed =
-      origin.includes(".replit.dev") ||
-      origin.includes(".repl.co") ||
-      origin.includes("localhost");
-    return callback(null, devAllowed);
+
+    // In development: safely parse the origin URL and match domains
+    try {
+      const { hostname } = new URL(origin);
+      const devAllowed =
+        hostname === "localhost" ||
+        hostname.endsWith(".replit.dev") ||
+        hostname.endsWith(".repl.co");
+      return callback(null, devAllowed);
+    } catch (err) {
+      // Invalid URL in origin header, deny CORS
+      return callback(null, false);
+    }
   },
   credentials: true,
 }));
