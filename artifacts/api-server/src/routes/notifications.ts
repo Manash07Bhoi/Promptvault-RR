@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, SQL } from "drizzle-orm";
 import { db, notificationsTable, notificationPreferencesTable } from "@workspace/db";
 import { requireAuth, type AuthRequest } from "../middlewares/auth.js";
 
@@ -13,7 +13,7 @@ router.get("/notifications", requireAuth, async (req: AuthRequest, res): Promise
   const limit = 20;
   const offset = (pageNum - 1) * limit;
 
-  let whereClause = eq(notificationsTable.userId, userId) as any;
+  let whereClause: SQL | undefined = eq(notificationsTable.userId, userId);
   if (filter === "unread") whereClause = and(eq(notificationsTable.userId, userId), eq(notificationsTable.isRead, false));
 
   const notifications = await db.select().from(notificationsTable)
