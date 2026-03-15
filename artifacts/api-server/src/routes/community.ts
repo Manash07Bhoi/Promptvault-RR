@@ -4,6 +4,7 @@ import {
   db, usersTable, communityPromptsTable, communityPromptVotesTable
 } from "@workspace/db";
 import { requireAuth, type AuthRequest } from "../middlewares/auth.js";
+import { sanitizeLikePattern } from "../utils/db-utils.js";
 
 const router: IRouter = Router();
 
@@ -25,7 +26,7 @@ router.get("/community/prompts", async (req: AuthRequest, res): Promise<void> =>
   ) as any;
 
   if (q) {
-    whereClause = and(whereClause, ilike(communityPromptsTable.body, `%${q}%`));
+    whereClause = and(whereClause, ilike(communityPromptsTable.body, `%${sanitizeLikePattern(q)}%`));
   }
   if (category && category !== "All") {
     whereClause = and(whereClause, eq(communityPromptsTable.aiTool, category));

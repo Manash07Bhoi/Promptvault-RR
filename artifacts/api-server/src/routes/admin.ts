@@ -21,6 +21,7 @@ import {
   AdminUpdateUserBody,
 } from "@workspace/api-zod";
 import { logger } from "../utils/logger.js";
+import { sanitizeLikePattern } from "../utils/db-utils.js";
 
 const router: IRouter = Router();
 
@@ -191,7 +192,7 @@ router.get("/packs", async (req, res): Promise<void> => {
 
   if (req.query.status) conditions.push(eq(packsTable.status, req.query.status as any));
   if (req.query.search) {
-    const q = `%${String(req.query.search).replace(/[%_\\]/g, "\\$&")}%`;
+    const q = `%${sanitizeLikePattern(req.query.search)}%`;
     conditions.push(or(ilike(packsTable.title, q), ilike(packsTable.shortDescription, q))!);
   }
   if (req.query.category) {
@@ -579,7 +580,7 @@ router.get("/users", async (req, res): Promise<void> => {
   const conditions: any[] = [];
 
   if (req.query.search) {
-    const q = `%${String(req.query.search).replace(/[%_\\]/g, "\\$&")}%`;
+    const q = `%${sanitizeLikePattern(req.query.search)}%`;
     conditions.push(or(ilike(usersTable.email, q), ilike(usersTable.displayName, q))!);
   }
   if (req.query.role) conditions.push(eq(usersTable.role, req.query.role as any));

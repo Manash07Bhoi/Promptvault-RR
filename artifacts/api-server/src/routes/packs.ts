@@ -6,6 +6,7 @@ import { generatePackPDF } from "../lib/pdf-generator.js";
 import { logger } from "../utils/logger.js";
 import { z } from "zod";
 import { cacheAside, TTL } from "../lib/cache.js";
+import { sanitizeLikePattern } from "../utils/db-utils.js";
 
 const router: IRouter = Router();
 
@@ -19,10 +20,6 @@ const packsQuerySchema = z.object({
   isFree: z.string().optional(),
   sort: z.enum(["newest", "popular", "price_asc", "price_desc", "rating"]).optional(),
 });
-
-function sanitizeSearchQuery(q: string): string {
-  return q.replace(/[%_\\]/g, "\\$&");
-}
 
 function formatPack(pack: any, category?: any) {
   return {
@@ -91,8 +88,7 @@ router.get("/packs", optionalAuth, async (req: AuthRequest, res): Promise<void> 
     }
 
     if (search) {
-      const sanitized = sanitizeSearchQuery(search);
-      const q = `%${sanitized}%`;
+      const q = `%${sanitizeLikePattern(search)}%`;
       conditions.push(or(ilike(packsTable.title, q), ilike(packsTable.shortDescription, q))!);
     }
 
