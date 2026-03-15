@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { sanitizeFilename } from "../lib/upload-security";
+import os from "os";
 
 // Replicate the sanitization function from routes
 function sanitizeSearchQuery(q: string): string {
@@ -49,6 +51,91 @@ describe("sanitizeSearchQuery (ILIKE injection prevention)", () => {
 
   it("escapes multiple special chars", () => {
     expect(sanitizeSearchQuery("50% off_sale\\")).toBe("50\\% off\\_sale\\\\");
+  });
+});
+
+describe("sanitizeFilename", () => {
+  it("allows safe basic filenames", () => {
+    expect(sanitizeFilename("image.jpg")).toBe("image.jpg");
+    expect(sanitizeFilename("my_file-123.png")).toBe("my_file-123.png");
+  });
+
+  it("prevents path traversal (Linux/Unix)", () => {
+    expect(sanitizeFilename("../../../etc/passwd")).toBe("passwd");
+    expect(sanitizeFilename("/var/www/html/index.php")).toBe("index.php");
+  });
+
+  it("prevents path traversal (Windows)", () => {
+    if (os.platform() === "win32") {
+      // Windows path.basename treats '\' as a separator
+      expect(sanitizeFilename("..\\..\\windows\\system32")).toBe("system32");
+      expect(sanitizeFilename("C:\\secret\\passwords.txt")).toBe("passwords.txt");
+    } else {
+      // path.basename does not recognize backslashes as separators on non-Windows
+      // systems, so it relies on the regex replacing them with underscores.
+      expect(sanitizeFilename("..\\..\\windows\\system32")).toBe(".._.._windows_system32");
+      expect(sanitizeFilename("C:\\secret\\passwords.txt")).toBe("C__secret_passwords.txt");
+    }
+  });
+
+  it("prevents mixed path traversal", () => {
+    if (os.platform() === "win32") {
+      // Windows path.basename treats '\' as a separator
+      expect(sanitizeFilename("../..\\etc/passwd")).toBe("passwd");
+    } else {
+      // POSIX path.basename splits on '/', yielding "..\\etc", then regex replaces "\"
+      expect(sanitizeFilename("../..\\etc/passwd")).toBe("passwd");
+    }
+  });
+
+  it("strips null bytes", () => {
+    // Note: path.basename treats '\0' as a normal character, so it passes through
+    // and then gets replaced by the regex.
+    expect(sanitizeFilename("file.jpg\0.exe")).toBe("file.jpg_.exe");
+    expect(sanitizeFilename("evil\x00file.png")).toBe("evil_file.png");
+  });
+
+  it("replaces non-alphanumeric and special characters with underscores", () => {
+    expect(sanitizeFilename("my file (1).jpg")).toBe("my_file__1_.jpg");
+    expect(sanitizeFilename("file@name!.png")).toBe("file_name_.png");
+    // path.basename stops at > when <script> is used sometimes depending on os?
+    // Let's test a simple hack string that will correctly be basename'd
+    expect(sanitizeFilename("hack<script>.html")).toBe("hack_script_.html");
+  });
+
+  it("handles whitespace normalization", () => {
+    expect(sanitizeFilename("file with spaces.jpg")).toBe("file_with_spaces.jpg");
+    expect(sanitizeFilename("tabs\t\tin\tname.txt")).toBe("tabs__in_name.txt");
+  });
+
+  it("handles leading dots (hidden files)", () => {
+    expect(sanitizeFilename(".env")).toBe(".env");
+    expect(sanitizeFilename("..hiddenfile")).toBe("..hiddenfile");
+  });
+
+  it("handles multiple dots", () => {
+    expect(sanitizeFilename("file..name..jpg")).toBe("file..name..jpg");
+  });
+
+  it("handles empty or nearly empty input", () => {
+    expect(sanitizeFilename("")).toBe("");
+    expect(sanitizeFilename("!")).toBe("_"); // Becomes underscore after sanitization
+  });
+
+  it("handles unicode characters safely (replaces with underscores)", () => {
+    // Depending on regex, non-ASCII chars usually get replaced
+    expect(sanitizeFilename("emoji_🎉.png")).toBe("emoji___.png");
+    expect(sanitizeFilename("très_bien.jpg")).toBe("tr_s_bien.jpg");
+    expect(sanitizeFilename("テスト.png")).toBe("___.png");
+  });
+
+  it("enforces the 200 character slice limit", () => {
+    const longName = "a".repeat(300) + ".txt";
+    const sanitized = sanitizeFilename(longName);
+    expect(sanitized.length).toBe(200);
+    // Because path.basename("aaaa....txt") is just "aaaa....txt", the end is truncated.
+    // The first 200 chars are just "a"s
+    expect(sanitized).toBe("a".repeat(200));
   });
 });
 
