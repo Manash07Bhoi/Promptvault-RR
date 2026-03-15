@@ -67,26 +67,13 @@ describe("sanitizeFilename", () => {
   });
 
   it("prevents path traversal (Windows)", () => {
-    if (os.platform() === "win32") {
-      // Windows path.basename treats '\' as a separator
-      expect(sanitizeFilename("..\\..\\windows\\system32")).toBe("system32");
-      expect(sanitizeFilename("C:\\secret\\passwords.txt")).toBe("passwords.txt");
-    } else {
-      // path.basename does not recognize backslashes as separators on non-Windows
-      // systems, so it relies on the regex replacing them with underscores.
-      expect(sanitizeFilename("..\\..\\windows\\system32")).toBe(".._.._windows_system32");
-      expect(sanitizeFilename("C:\\secret\\passwords.txt")).toBe("C__secret_passwords.txt");
-    }
+    // Both platforms should treat "\" as a path separator due to pre-normalization
+    expect(sanitizeFilename("..\\..\\windows\\system32")).toBe("system32");
+    expect(sanitizeFilename("C:\\secret\\passwords.txt")).toBe("passwords.txt");
   });
 
   it("prevents mixed path traversal", () => {
-    if (os.platform() === "win32") {
-      // Windows path.basename treats '\' as a separator
-      expect(sanitizeFilename("../..\\etc/passwd")).toBe("passwd");
-    } else {
-      // POSIX path.basename splits on '/', yielding "..\\etc", then regex replaces "\"
-      expect(sanitizeFilename("../..\\etc/passwd")).toBe("passwd");
-    }
+    expect(sanitizeFilename("../..\\etc/passwd")).toBe("passwd");
   });
 
   it("strips null bytes", () => {
@@ -119,8 +106,14 @@ describe("sanitizeFilename", () => {
   });
 
   it("handles empty or nearly empty input", () => {
-    expect(sanitizeFilename("")).toBe("");
-    expect(sanitizeFilename("!")).toBe("_"); // Becomes underscore after sanitization
+    // Empty inputs, or inputs that sanitize to purely punctuation, fallback to "upload"
+    expect(sanitizeFilename("")).toBe("upload");
+    expect(sanitizeFilename("!")).toBe("upload"); // Becomes underscore initially, but fallback triggers
+  });
+
+  it("prevents resolving to current or parent directory", () => {
+    expect(sanitizeFilename(".")).toBe("upload");
+    expect(sanitizeFilename("..")).toBe("upload");
   });
 
   it("handles unicode characters safely (replaces with underscores)", () => {
