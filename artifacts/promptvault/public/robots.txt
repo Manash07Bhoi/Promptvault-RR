@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard/
+Disallow: /admin/
+Disallow: /pvx-admin
+Disallow: /api/
+
+Sitemap: https://promptvault--ganeswar07rana.replit.app/sitemap.xml

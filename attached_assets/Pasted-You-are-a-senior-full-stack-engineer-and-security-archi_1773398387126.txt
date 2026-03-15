@@ -1,0 +1,746 @@
+You are a senior full-stack engineer and security architect performing a 
+comprehensive production-readiness audit on the PromptVault codebase. 
+Your job is to find, fix, and harden every layer of this application. 
+Do not stop until every item below is resolved and verified.
+
+═══════════════════════════════════════════════════════════════════
+MISSION OBJECTIVE
+═══════════════════════════════════════════════════════════════════
+
+Perform a complete debug, security hardening, performance optimization, 
+and production-readiness pass on this entire codebase. Fix every issue 
+you find. Do not just report problems — fix them. After fixing, verify 
+the fix works. Leave zero known issues unresolved.
+
+═══════════════════════════════════════════════════════════════════
+PHASE 1 — FULL CODEBASE AUDIT (RUN FIRST)
+═══════════════════════════════════════════════════════════════════
+
+Run all of these commands and fix every error and warning before 
+proceeding to any other phase:
+
+── TypeScript ──
+npx tsc --noEmit (in both /client and /server)
+Fix every type error. No "any" shortcuts. Use proper types.
+Fix every implicit any, missing return type, and unsafe assignment.
+
+── Linting ──
+npx eslint . --ext .ts,.tsx --max-warnings 0
+Fix every error and warning. No disabled rules without explanation.
+
+── Dependencies ──
+npm audit --audit-level=moderate
+Fix every moderate, high, and critical vulnerability.
+Run: npm audit fix
+For unfixable: manually update or replace the package.
+
+── Dead Code ──
+Find and remove: unused imports, unused variables, unreachable code,
+commented-out code blocks, console.log left from development,
+TODO comments that have not been addressed.
+
+── Build Verification ──
+npm run build (client + server both must compile with zero errors)
+Fix every build error before continuing.
+
+═══════════════════════════════════════════════════════════════════
+PHASE 2 — BACKEND SECURITY HARDENING
+═══════════════════════════════════════════════════════════════════
+
+Audit and fix every item below in the server codebase:
+
+── 2.1 Authentication & JWT ──
+
+□ JWT access tokens expire in exactly 15 minutes (not longer)
+□ JWT refresh tokens expire in exactly 30 days
+□ Both tokens signed with RS256 (asymmetric keys), NOT HS256
+  - Generate RSA key pair if not already using RS256
+  - Private key stored in env var, never committed to repo
+□ Refresh token rotation: each use issues a new refresh token
+  and invalidates the old one (stored in Redis or DB)
+□ Refresh tokens stored in httpOnly + Secure + SameSite=Strict cookie
+  Access tokens stored in memory only (never localStorage, never cookie)
+□ All protected routes verify token on EVERY request — no exceptions
+□ Token payload contains only: userId, role, sessionId — nothing else
+□ JWT secret/keys are minimum 256 bits of entropy
+□ Implement token blacklist for logout: store revoked JTIs in Redis
+  with TTL matching remaining token lifetime
+□ Verify: expired tokens return 401, tampered tokens return 401,
+  missing tokens return 401 — never 500
+
+── 2.2 Password Security ──
+
+□ Passwords hashed with bcrypt at cost factor 12 minimum
+□ Password validation: minimum 8 chars, requires uppercase, 
+  lowercase, number, special character — enforced server-side with Zod
+□ Password reset tokens: cryptographically random (crypto.randomBytes(32)),
+  stored as bcrypt hash in DB, expire in 1 hour, single-use only
+  (delete token after use, regardless of success or failure)
+□ Current password required to change password
+□ Rate limit password reset to 3 requests per email per hour
+□ Never reveal whether an email exists in forgot-password response
+  (always return same success message regardless)
+□ Implement timing-safe comparison for token verification
+  (use crypto.timingSafeEqual — never ===)
+
+── 2.3 Input Validation & Sanitization ──
+
+□ Every single API endpoint validates input with Zod schema
+  No endpoint accepts unvalidated req.body, req.query, or req.params
+□ String fields: trim whitespace, enforce maxLength on all text inputs
+□ Numeric fields: validate range, reject NaN and Infinity
+□ Email fields: validate format AND normalize (lowercase, trim)
+□ UUID fields: validate format before passing to database
+□ Array fields: enforce maxItems limits
+□ File uploads: validate MIME type (check magic bytes, not just extension),
+  enforce file size limits, rename files with crypto.randomUUID()
+□ Reject requests with Content-Type mismatch
+□ Strip unknown fields (Zod: .strict() on request schemas)
+□ HTML encode all user-supplied text before storing
+  (use DOMPurify on client, sanitize-html on server)
+
+── 2.4 SQL Injection Prevention ──
+
+□ Audit every database query — confirm zero raw string concatenation
+□ All queries use Prisma ORM parameterized queries OR pg parameterized ($1)
+□ Search queries use parameterized ILIKE, never string interpolation
+□ Raw SQL (if any) uses Prisma.$queryRaw with Prisma.sql tagged template
+□ Verify: input of "'; DROP TABLE users; --" causes zero database effect
+
+── 2.5 Authorization & Access Control ──
+
+□ Implement role check on EVERY admin route — server-side, not just frontend
+□ Implement resource ownership check on ALL user-scoped endpoints:
+  - User can only download their own purchases
+  - User can only edit their own review
+  - User can only view their own orders
+  Return 403 (not 404) when access denied to owned resource
+□ Admin cannot access SUPER_ADMIN routes unless role === SUPER_ADMIN
+□ Verify: buyer JWT cannot access /api/admin/* — returns 403
+□ Verify: user A cannot access user B's orders — returns 403
+□ Implement field-level authorization: never return passwordHash,
+  stripeCustomerId, or internal IDs to non-admin users
+□ Download endpoint must verify: 
+  1. User is authenticated
+  2. User has a COMPLETED order containing that packId
+  3. Only then generate presigned URL
+  Never serve files based on URL guessing
+
+── 2.6 HTTP Security Headers ──
+
+Install and configure helmet with ALL options:
+
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'strict-dynamic'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "https:", "blob:"],
+      connectSrc: ["'self'", process.env.CLIENT_URL],
+      frameSrc: ["'none'"],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: [],
+    },
+  },
+  crossOriginEmbedderPolicy: true,
+  crossOriginOpenerPolicy: { policy: "same-origin" },
+  crossOriginResourcePolicy: { policy: "same-site" },
+  dnsPrefetchControl: { allow: false },
+  frameguard: { action: "deny" },
+  hidePoweredBy: true,
+  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+  ieNoOpen: true,
+  noSniff: true,
+  originAgentCluster: true,
+  permittedCrossDomainPolicies: false,
+  referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+  xssFilter: true,
+}))
+
+□ CORS: allowlist only CLIENT_URL from env — never "*"
+□ Add X-Request-ID header to every response (use uuid)
+□ Remove Server header
+□ Add Permissions-Policy header: camera=(), microphone=(), geolocation=()
+
+── 2.7 Rate Limiting ──
+
+Implement these specific rate limits (use express-rate-limit + Redis store):
+
+□ POST /api/auth/login — 10 requests per 15 minutes per IP
+□ POST /api/auth/register — 5 requests per hour per IP
+□ POST /api/auth/forgot-password — 3 requests per hour per IP + email
+□ POST /api/auth/reset-password — 5 requests per hour per IP
+□ POST /api/auth/verify-email resend — 3 requests per hour per IP
+□ GET /api/search — 60 requests per minute per IP
+□ GET /api/* (public) — 120 requests per minute per IP
+□ All authenticated user routes — 300 requests per minute per user
+□ All admin routes — 600 requests per minute per admin
+□ POST /api/webhooks/stripe — no rate limit (but verify Stripe signature)
+□ Rate limit response: 429 with Retry-After header
+□ Rate limit state stored in Redis (not memory — memory resets on restart)
+
+── 2.8 Stripe Webhook Security ──
+
+□ Verify Stripe-Signature header on EVERY webhook request
+  using stripe.webhooks.constructEvent()
+□ Webhook endpoint uses express.raw() body parser (NOT express.json())
+□ Implement idempotency: store processed event IDs in Redis for 24h,
+  skip duplicate events
+□ Only process known event types — ignore and log unknown types
+□ Webhook handler wrapped in try-catch — never let it crash the server
+□ Return 200 immediately to Stripe, process event asynchronously
+
+── 2.9 File Upload Security ──
+
+□ Validate file MIME type using file-type package (checks magic bytes)
+□ Accepted types: image/jpeg, image/png, image/webp only for avatars
+□ Maximum file size: 5MB for images, enforced at middleware level
+□ Files renamed to crypto.randomUUID() + correct extension
+□ Files stored outside web root (never in /public directly)
+□ Serve uploaded files through a controller that checks authorization
+□ Scan for malicious content: reject SVG uploads (can contain JS)
+□ Strip EXIF metadata from images using sharp before storing
+
+── 2.10 Environment & Secrets ──
+
+□ Verify .env is in .gitignore (check with: git check-ignore .env)
+□ Verify no secrets in any committed file (search: git grep -i "secret\|password\|key\|token" -- "*.ts" "*.js" "*.json")
+□ All secrets loaded from process.env — crash on startup if required vars missing:
+  
+  const required = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET'];
+  required.forEach(key => {
+    if (!process.env[key]) {
+      console.error(`FATAL: Missing required environment variable: ${key}`);
+      process.exit(1);
+    }
+  });
+
+□ Secrets never logged — add log sanitizer that masks values
+  matching patterns: /key|secret|password|token|auth/i
+□ .env.example has every key with placeholder values and comments
+□ No hardcoded URLs, IPs, or credentials anywhere in source
+
+── 2.11 Database Security ──
+
+□ Database user has minimum required permissions:
+  SELECT, INSERT, UPDATE, DELETE on application tables only
+  No DROP, CREATE, TRUNCATE permissions for app user
+□ Database connection uses SSL in production (ssl: { rejectUnauthorized: true })
+□ Connection string never logged
+□ Prisma connection pool: max 10 connections (not unlimited)
+□ All financial amounts stored as integers (cents), never floats
+□ Soft deletes implemented — no permanent DELETE on users/orders/packs
+□ Audit log (moderation_log) written for all sensitive mutations
+□ Database backup verified: automated backup script exists
+
+── 2.12 API Response Security ──
+
+□ Never return stack traces in production responses
+□ Error handler checks NODE_ENV — only return error.message in dev
+□ Production errors return generic message + error code only
+□ Remove all internal IDs from public-facing responses where not needed
+□ Paginated list endpoints never return more than 100 items per page
+□ Never return deleted_at, password_hash, stripe_customer_id to clients
+□ Use response serialization layer (class-transformer or manual) to 
+  whitelist returned fields — never return raw Prisma objects
+
+═══════════════════════════════════════════════════════════════════
+PHASE 3 — FRONTEND SECURITY HARDENING
+═══════════════════════════════════════════════════════════════════
+
+── 3.1 XSS Prevention ──
+
+□ Never use dangerouslySetInnerHTML — search entire codebase and remove
+□ If rich text display is needed, sanitize with DOMPurify first:
+  import DOMPurify from 'dompurify'
+  <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(content) }} />
+□ All user-supplied text rendered as React text nodes (never innerHTML)
+□ URLs from API validated before use in href/src (reject javascript: scheme)
+□ CSP nonce implemented for any inline scripts (prefer external scripts)
+
+── 3.2 Auth State Security ──
+
+□ Access token stored in memory only (Zustand store, not localStorage)
+□ Zustand auth store clears on page refresh — re-hydrate via /api/auth/me
+  using the httpOnly refresh token cookie automatically
+□ Auth store never serialized to localStorage or sessionStorage
+□ Implement silent token refresh: intercept 401 responses in Axios,
+  call /api/auth/refresh, retry original request — max 1 retry
+□ On logout: clear Zustand store + call logout API to revoke refresh token
+□ Protected routes check auth state before render — redirect to /login
+  with returnUrl parameter preserved
+
+── 3.3 Sensitive Data Handling ──
+
+□ No sensitive data in URL parameters (use POST body or headers)
+□ No PII in console.log in production (set up log suppression for prod)
+□ Clear auth state on browser tab close if "remember me" not checked
+□ Payment info never touches frontend state — always via Stripe hosted
+
+── 3.4 Dependency Security ──
+
+□ npm audit in /client — fix all moderate+ vulnerabilities
+□ Lock all dependency versions in package.json (no ^ or ~ ranges)
+  Use exact versions for security-critical packages
+□ Review all packages with network access — verify they are necessary
+
+── 3.5 Environment Config ──
+
+□ VITE_ prefix only for vars that MUST be public (API URL, Stripe key)
+□ Never prefix secret keys with VITE_ (they become public in bundle)
+□ Verify built bundle does not contain any secret values:
+  npm run build && grep -r "sk_" dist/ (should return nothing)
+
+═══════════════════════════════════════════════════════════════════
+PHASE 4 — COMPREHENSIVE BUG FIXING
+═══════════════════════════════════════════════════════════════════
+
+── 4.1 Race Conditions & Async Bugs ──
+
+□ All async functions have try-catch — find any missing ones
+□ Promise.all used correctly — no floating promises (unhandled .then)
+□ BullMQ jobs: each job processor wrapped in try-catch that updates
+  job status to FAILED with error message on any exception
+□ No async operations without timeout — add AbortController timeouts
+  to all external API calls (AI, Stripe, S3): 30 second max
+□ Database transactions used for all multi-step operations:
+  - Order creation (order + orderItems + inventory update)
+  - Pack approval (status update + moderation log + analytics event)
+  - Coupon use (validate + decrement count atomically)
+□ Stripe webhook payment processing wrapped in DB transaction
+
+── 4.2 Memory Leaks ──
+
+□ All useEffect hooks that set up subscriptions/timers/listeners
+  return cleanup functions
+□ Socket.IO event listeners removed on component unmount
+□ BullMQ event listeners removed on worker shutdown
+□ Puppeteer browser instances properly closed after PDF generation
+  (use try-finally: browser.close() always runs)
+□ File streams properly closed after ZIP generation
+□ Redis connections properly closed on process shutdown
+□ Implement graceful shutdown handler:
+
+  const shutdown = async (signal: string) => {
+    console.log(`Received ${signal}, shutting down gracefully...`);
+    server.close();
+    await worker.close();
+    await redis.quit();
+    await prisma.$disconnect();
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+
+── 4.3 Error Boundary Coverage ──
+
+□ Root-level ErrorBoundary wraps entire React app
+□ Each major layout section has its own ErrorBoundary
+  (so one broken widget doesn't crash the whole page)
+□ ErrorBoundary shows helpful UI with retry button
+□ Errors from ErrorBoundary reported to Sentry (if configured)
+□ Async errors (from useEffect, event handlers) caught and displayed
+  via Toast notifications — never silently swallowed
+
+── 4.4 Data Consistency Bugs ──
+
+□ All monetary calculations done in integer cents — zero float arithmetic
+  (1.1 + 2.2 !== 3.3 in JavaScript — use integer math only)
+□ Dates: all stored as UTC, displayed in user's local timezone
+  Use date-fns or Temporal for all date operations
+□ Pagination: cursor-based pagination for all list endpoints
+  (page-based pagination breaks with concurrent inserts)
+□ Pack prompt count kept in sync: use DB trigger or transaction to
+  update prompt_packs.promptCount when prompts are added/removed
+□ Category pack count kept in sync similarly
+□ Average rating recalculated atomically when review is added/updated/deleted
+□ Order total validation: server recalculates total from DB prices,
+  never trusts client-supplied total
+
+── 4.5 API Contract Bugs ──
+
+□ All endpoints return correct HTTP status codes:
+  200 OK (GET success)
+  201 Created (POST success that creates resource)
+  204 No Content (DELETE success)
+  400 Bad Request (validation errors)
+  401 Unauthorized (missing/invalid auth)
+  403 Forbidden (authenticated but not authorized)
+  404 Not Found (resource does not exist)
+  409 Conflict (duplicate email, etc.)
+  422 Unprocessable Entity (business logic validation failure)
+  429 Too Many Requests (rate limit)
+  500 Internal Server Error (unexpected errors only)
+
+□ 404 vs 403: if resource exists but user lacks access, return 403
+  Only return 404 if resource genuinely does not exist
+□ All list endpoints support: page/cursor, limit (max 100), 
+  sort field, sort direction, relevant filters
+□ Filtering by deleted/archived items excluded from public endpoints
+
+── 4.6 Frontend Data Fetching Bugs ──
+
+□ All React Query queries have staleTime configured (not 0)
+□ All React Query mutations invalidate relevant queries on success
+□ Loading states shown for ALL async operations — no missing spinners
+□ Error states shown for ALL failed requests — no silent failures
+□ Refetch on window focus disabled for stable data (pack details, categories)
+  to prevent jarring UI refreshes
+□ Optimistic updates implemented for: wishlist toggle, helpful vote
+□ Infinite scroll properly resets when filters change
+□ Search debounced at 300ms — no request on every keystroke
+
+── 4.7 Form Bugs ──
+
+□ All forms prevent double-submission (disable submit button on submit)
+□ Form state cleared after successful submission
+□ File inputs cleared after upload
+□ Unsaved changes warning on navigation away from edit forms
+□ Form errors cleared when user starts typing again
+□ Server validation errors mapped to specific form fields
+□ Long-running form submissions show progress feedback
+
+── 4.8 Routing Bugs ──
+
+□ 404 page renders for unknown routes
+□ Auth redirect preserves returnUrl: /login?returnUrl=/dashboard/purchases
+□ After login, redirect to returnUrl (validate it's a relative path)
+□ Admin routes redirect to /login (not /) when unauthenticated
+□ Browser back button works correctly through auth flows
+□ Scroll position resets to top on route change
+
+═══════════════════════════════════════════════════════════════════
+PHASE 5 — PERFORMANCE OPTIMIZATION
+═══════════════════════════════════════════════════════════════════
+
+── 5.1 Backend Performance ──
+
+□ Add database query logging in development — identify N+1 queries
+□ Fix all N+1 queries using Prisma include/select or DataLoader pattern
+□ Add Redis caching for:
+  - Published pack list: 5 min TTL, invalidate on publish/unpublish
+  - Pack detail: 10 min TTL, invalidate on pack update
+  - Category list: 1 hour TTL, invalidate on category CRUD
+  - Homepage featured packs: 15 min TTL
+  Cache-aside pattern: check Redis → miss → query DB → store in Redis
+
+□ All cache keys follow pattern: {entity}:{id}:{variant}
+□ Cache invalidation is targeted (not flush-all)
+□ Add database indexes for all missing cases:
+  - prompt_packs: (status, publishedAt DESC) for marketplace listing
+  - prompt_packs: (categoryId, status) for category browse
+  - orders: (userId, createdAt DESC) for purchase history
+  - analytics_events: (packId, createdAt) for pack analytics
+  - automation_jobs: (status, createdAt DESC) for queue monitoring
+□ Verify EXPLAIN ANALYZE on top 5 most frequent queries — all use indexes
+□ Add connection pooling via PgBouncer or Prisma connection limit config
+
+── 5.2 Frontend Performance ──
+
+□ Implement code splitting — every route lazy loaded:
+  const PackDetail = lazy(() => import('./pages/PackDetailPage'))
+□ Wrap lazy routes in Suspense with skeleton fallback
+□ Analyze bundle with: npx vite-bundle-visualizer
+  Target: initial JS bundle < 200KB gzipped
+□ Heavy libraries loaded lazily:
+  - Recharts: only in admin routes
+  - Framer Motion: split animation code
+□ Images: use WebP format, width/height attributes set, loading="lazy"
+  for below-fold images, loading="eager" for hero/LCP images
+□ Fonts: preload Inter and Fira Code in <head>, font-display: swap
+□ Implement virtual scrolling for lists > 100 items
+  (use @tanstack/react-virtual)
+□ Memoize expensive renders: React.memo on PackCard, CategoryCard
+□ useCallback on all event handlers passed as props
+□ useMemo on all filtered/sorted derived data
+
+── 5.3 Core Web Vitals ──
+
+□ Measure with: npm run build && npx lighthouse http://localhost:3000
+□ LCP target: < 2.0s — ensure hero image is preloaded
+□ CLS target: < 0.05 — set width/height on all images and skeleton shapes
+□ FID/INP target: < 50ms — defer non-critical JS
+□ Fix every Lighthouse warning before completing this phase
+
+═══════════════════════════════════════════════════════════════════
+PHASE 6 — INFRASTRUCTURE & RELIABILITY
+═══════════════════════════════════════════════════════════════════
+
+── 6.1 Health Checks ──
+
+Implement GET /api/health endpoint that returns:
+{
+  status: "ok" | "degraded" | "down",
+  timestamp: ISO string,
+  version: package.json version,
+  services: {
+    database: "ok" | "error",
+    redis: "ok" | "error",
+    queue: { pending: number, active: number, failed: number }
+  },
+  uptime: seconds
+}
+
+□ Database check: SELECT 1 with 2s timeout
+□ Redis check: PING with 1s timeout
+□ Returns 200 if status=ok, 503 if status=down
+□ Does NOT expose sensitive config in response
+□ Implement GET /api/health/ready (for Kubernetes readiness probe)
+□ Implement GET /api/health/live (for Kubernetes liveness probe)
+
+── 6.2 Logging ──
+
+Replace all console.log with structured logger (pino):
+
+import pino from 'pino';
+const logger = pino({
+  level: process.env.LOG_LEVEL || 'info',
+  redact: ['req.headers.authorization', 'body.password', 'body.token'],
+  transport: process.env.NODE_ENV === 'development' 
+    ? { target: 'pino-pretty' } : undefined
+});
+
+□ Log format: JSON in production, pretty in development
+□ Every request logged: method, path, statusCode, duration, requestId
+□ Every error logged with: message, stack, requestId, userId (if auth)
+□ Automation jobs: log start, completion, and failure with job metadata
+□ Sensitive fields NEVER logged (use redact config above)
+□ Log levels used correctly:
+  - error: unexpected exceptions that need investigation
+  - warn: expected errors (validation, auth failures)
+  - info: key business events (order, registration, job completion)
+  - debug: detailed flow (only in development)
+
+── 6.3 Error Monitoring ──
+
+□ Integrate Sentry if SENTRY_DSN env var is set:
+  import * as Sentry from '@sentry/node';
+  if (process.env.SENTRY_DSN) {
+    Sentry.init({ dsn: process.env.SENTRY_DSN, environment: process.env.NODE_ENV });
+  }
+□ Sentry captures: unhandled exceptions, unhandled rejections, 
+  BullMQ job failures, critical business logic errors
+□ Sentry does NOT capture: validation errors, auth failures (too noisy)
+□ Source maps uploaded on production build
+□ Frontend Sentry integration in React ErrorBoundary
+
+── 6.4 Graceful Shutdown & Process Management ──
+
+□ Graceful shutdown handles SIGTERM and SIGINT signals
+□ Shutdown sequence:
+  1. Stop accepting new HTTP requests
+  2. Drain in-flight requests (30s max)
+  3. Stop BullMQ workers (wait for active jobs to complete or timeout)
+  4. Close Redis connections
+  5. Close database connections
+  6. Exit with code 0
+□ Unhandled promise rejections caught and logged:
+  process.on('unhandledRejection', (reason) => {
+    logger.error({ reason }, 'Unhandled promise rejection');
+    process.exit(1);
+  });
+□ Uncaught exceptions caught and logged before exit
+
+── 6.5 Queue Reliability ──
+
+□ BullMQ job concurrency limits set (not unlimited workers)
+□ Dead letter queue: jobs that exceed maxRetries moved to dead queue
+□ Stalled job detection: jobs running > 10 min marked as failed
+□ Queue metrics exposed on /api/health
+□ Failed jobs alert admin via WebSocket event
+
+═══════════════════════════════════════════════════════════════════
+PHASE 7 — PAYMENT SECURITY DEEP AUDIT
+═══════════════════════════════════════════════════════════════════
+
+□ Server-side price validation: when creating Stripe session,
+  fetch prices from DB — never use client-supplied prices
+□ Coupon validation atomic: check validity + decrement count in 
+  single DB transaction to prevent race condition abuse
+□ Order creation idempotent: use Stripe payment_intent_id as 
+  idempotency key — cannot create duplicate orders
+□ Webhook handler verifies: signature → idempotency → process
+□ Refund only allowed if: order status is COMPLETED, not already refunded,
+  within 30-day window — all checked server-side
+□ Download access check: verify order status === COMPLETED (not just exists)
+□ Test the full payment flow with Stripe test cards:
+  - 4242 4242 4242 4242 → success
+  - 4000 0000 0000 9995 → insufficient funds (verify error handling)
+  - 4000 0025 0000 3155 → 3D Secure (verify redirect handling)
+
+═══════════════════════════════════════════════════════════════════
+PHASE 8 — AUTOMATED TESTING
+═══════════════════════════════════════════════════════════════════
+
+Write tests for all critical paths. Use Vitest (both client and server).
+
+── 8.1 Backend Unit Tests ──
+
+Write tests for these service functions:
+□ auth.service: 
+  - register (success, duplicate email, weak password)
+  - login (success, wrong password, unverified email, suspended account)
+  - refreshToken (success, expired, tampered, revoked)
+  - resetPassword (success, expired token, already used)
+
+□ order.service:
+  - createOrder (success, pack not found, already purchased)
+  - validateCoupon (valid, expired, maxUses reached, below minimum)
+  - calculateTotal (with coupon, without coupon, free pack)
+
+□ automation.service:
+  - generatePrompts (success, API timeout, invalid response)
+  - generateMetadata (success, fallback to defaults)
+
+── 8.2 Backend Integration Tests ──
+
+Test complete API flows using supertest:
+□ POST /api/auth/register → POST /api/auth/login → GET /api/auth/me
+□ GET /api/packs (verify only published packs returned)
+□ GET /api/packs/:slug (verify prompts preview limited for unauthenticated)
+□ Admin: POST /api/admin/automation/trigger → verify job created in DB
+□ Admin: POST /api/admin/moderation/approve/:id → verify pack status = PUBLISHED
+
+── 8.3 Security Tests ──
+
+□ Verify buyer cannot access admin endpoints (expect 403)
+□ Verify unauthenticated user cannot access protected routes (expect 401)
+□ Verify user A cannot access user B's orders (expect 403)
+□ Verify SQL injection attempt returns 400 or safe empty result
+□ Verify XSS attempt in pack title is sanitized before storage
+□ Verify rate limiting kicks in after threshold (mock time if needed)
+□ Verify expired JWT returns 401
+□ Verify tampered JWT returns 401
+
+── 8.4 Frontend Component Tests ──
+
+□ PackCard renders correctly with all prop combinations
+□ PackCard wishlist button calls correct handler
+□ LoginForm validates email format before submit
+□ LoginForm shows error message on failed login
+□ Protected route redirects to /login when unauthenticated
+□ Toast notification auto-dismisses after 4 seconds
+□ Skeleton renders during loading, content renders after load
+
+── 8.5 Test Scripts ──
+
+Add to package.json:
+"test": "vitest run",
+"test:watch": "vitest",
+"test:coverage": "vitest run --coverage",
+"test:security": "vitest run tests/security"
+
+□ Minimum coverage targets:
+  - Services (business logic): 80%
+  - API routes: 70%
+  - React components: 60%
+  - Overall: 70%
+
+═══════════════════════════════════════════════════════════════════
+PHASE 9 — PRODUCTION DEPLOYMENT HARDENING
+═══════════════════════════════════════════════════════════════════
+
+── 9.1 Build Optimization ──
+
+□ Production build: NODE_ENV=production npm run build
+□ Remove all devDependencies from production bundle
+□ Tree-shaking verified: import only what you use from large libraries
+□ Source maps generated but NOT served publicly (upload to Sentry only)
+□ Environment-specific config: never import dev tools in production build
+
+── 9.2 Production Config Checklist ──
+
+Create scripts/pre-deploy-check.ts that verifies:
+□ NODE_ENV=production is set
+□ All required env vars present and non-empty
+□ Database connection successful
+□ Redis connection successful
+□ JWT secrets are minimum 256 bits entropy
+□ CORS origin is set to actual production domain (not localhost)
+□ Debug mode is OFF
+□ Stripe in live mode (not test mode) — if STRIPE_SECRET_KEY starts with sk_live_
+□ Email sending works (send test email to admin)
+□ S3 bucket accessible with configured credentials
+□ Log: "Pre-deploy checks passed" or exit(1) with specific failure
+
+── 9.3 Database Migration Safety ──
+
+□ Migrations are backwards-compatible (can deploy without downtime)
+□ No column renames in a single migration (use add column → backfill → drop old)
+□ No NOT NULL columns added without DEFAULT in same migration
+□ Migration rollback scripts exist for each migration
+□ Migrations tested on staging database before production
+
+── 9.4 Container Security (if using Docker) ──
+
+□ Node.js runs as non-root user (USER node in Dockerfile)
+□ Multi-stage build: final image contains only production artifacts
+□ Base image: node:20-alpine (minimal attack surface)
+□ No secrets in Dockerfile or docker-compose.yml
+□ .dockerignore includes: .env, node_modules, .git, tests, *.md
+
+═══════════════════════════════════════════════════════════════════
+PHASE 10 — FINAL VERIFICATION
+═══════════════════════════════════════════════════════════════════
+
+Run this complete verification sequence and confirm each passes:
+
+── Security Verification ──
+□ npm audit — zero high/critical vulnerabilities
+□ npx tsc --noEmit — zero TypeScript errors
+□ npx eslint . --max-warnings 0 — zero linting warnings
+□ Tampered JWT → 401 (test with curl)
+□ Buyer token on admin route → 403 (test with curl)
+□ SQL injection in search param → safe empty result (test with curl)
+□ Rate limit on /api/auth/login triggers after 10 attempts
+
+── Functional Verification ──
+□ npm run build — zero build errors (client + server)
+□ npm run test — all tests pass
+□ npm run test:coverage — meets minimum coverage thresholds
+□ GET /api/health → { status: "ok" } with all services healthy
+□ Full user journey: register → verify → browse → purchase → download
+□ Full admin journey: login → trigger generation → review → approve → verify published
+□ Stripe test payment completes and order created
+□ PDF generated and downloadable
+□ ZIP generated and downloadable
+□ WebSocket events received in admin dashboard during job execution
+
+── Performance Verification ──
+□ Lighthouse score ≥ 90 (Performance, Accessibility, Best Practices, SEO)
+□ GET /api/packs responds in < 200ms (with Redis cache warm)
+□ Homepage renders first meaningful paint in < 1.5s
+□ No memory leaks: run server for 5 minutes under load, check heap size stable
+
+── Final Cleanup ──
+□ Remove all TODO and FIXME comments (fix them or create tracked issues)
+□ Remove all console.log debug statements
+□ Remove all unused files, routes, and components
+□ Verify .gitignore covers: .env, node_modules, dist, .DS_Store, *.log
+□ README.md complete with: setup instructions, env vars guide, 
+  development workflow, deployment guide, architecture overview
+
+═══════════════════════════════════════════════════════════════════
+COMPLETION CRITERIA
+═══════════════════════════════════════════════════════════════════
+
+Do NOT report this task as complete until ALL of the following are true:
+
+✅ npm audit shows zero high or critical vulnerabilities
+✅ npx tsc --noEmit shows zero errors in client and server
+✅ npm run test passes with ≥ 70% coverage
+✅ npm run build succeeds with zero errors
+✅ GET /api/health returns { status: "ok" }
+✅ Lighthouse score ≥ 90 on homepage
+✅ All 10 phases completed and verified
+✅ Zero console.log statements in production code
+✅ Zero hardcoded secrets in codebase
+✅ README.md is complete and accurate
+
+Work through every phase systematically. Fix each issue completely 
+before moving to the next. Show your work — log what you fixed and 
+why. When all phases are complete, provide a final security and 
+quality report summarizing: issues found, issues fixed, test coverage 
+achieved, and Lighthouse scores.

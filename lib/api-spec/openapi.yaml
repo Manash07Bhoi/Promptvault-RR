@@ -1,0 +1,2765 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: PromptVault API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: auth
+    description: Authentication
+  - name: packs
+    description: Prompt packs
+  - name: categories
+    description: Categories
+  - name: search
+    description: Search
+  - name: user
+    description: User operations
+  - name: reviews
+    description: Reviews
+  - name: checkout
+    description: Checkout & payments
+  - name: orders
+    description: Orders
+  - name: coupons
+    description: Coupons
+  - name: admin
+    description: Admin operations
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  # Auth endpoints
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Register new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /auth/refresh:
+    post:
+      operationId: refreshToken
+      tags: [auth]
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshTokenBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+
+  /auth/forgot-password:
+    post:
+      operationId: forgotPassword
+      tags: [auth]
+      summary: Request password reset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForgotPasswordBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /auth/reset-password:
+    post:
+      operationId: resetPassword
+      tags: [auth]
+      summary: Reset password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPasswordBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /auth/verify-email:
+    post:
+      operationId: verifyEmail
+      tags: [auth]
+      summary: Verify email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyEmailBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # Packs endpoints
+  /packs:
+    get:
+      operationId: listPacks
+      tags: [packs]
+      summary: List published packs
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: minPrice
+          in: query
+          schema:
+            type: integer
+        - name: maxPrice
+          in: query
+          schema:
+            type: integer
+        - name: aiTool
+          in: query
+          schema:
+            type: string
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [newest, popular, price_asc, price_desc, rating]
+        - name: isFree
+          in: query
+          schema:
+            type: boolean
+        - name: tags
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackListResponse"
+
+  /packs/featured:
+    get:
+      operationId: getFeaturedPacks
+      tags: [packs]
+      summary: Get featured packs
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pack"
+
+  /packs/trending:
+    get:
+      operationId: getTrendingPacks
+      tags: [packs]
+      summary: Get trending packs
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [24h, 7d, 30d]
+            default: 7d
+        - name: category
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pack"
+
+  /packs/bestsellers:
+    get:
+      operationId: getBestsellerPacks
+      tags: [packs]
+      summary: Get bestseller packs
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pack"
+
+  /packs/{slug}:
+    get:
+      operationId: getPackBySlug
+      tags: [packs]
+      summary: Get pack detail by slug
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /packs/{slug}/related:
+    get:
+      operationId: getRelatedPacks
+      tags: [packs]
+      summary: Get related packs
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pack"
+
+  # Categories
+  /categories:
+    get:
+      operationId: listCategories
+      tags: [categories]
+      summary: List categories
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+
+  /categories/{slug}:
+    get:
+      operationId: getCategoryBySlug
+      tags: [categories]
+      summary: Get category by slug
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+
+  /categories/{slug}/packs:
+    get:
+      operationId: getCategoryPacks
+      tags: [categories]
+      summary: Get packs in a category
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackListResponse"
+
+  # Search
+  /search:
+    get:
+      operationId: searchPacks
+      tags: [search]
+      summary: Search packs
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackListResponse"
+
+  # User endpoints
+  /user/profile:
+    get:
+      operationId: getUserProfile
+      tags: [user]
+      summary: Get user profile
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    patch:
+      operationId: updateUserProfile
+      tags: [user]
+      summary: Update user profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /user/purchases:
+    get:
+      operationId: getUserPurchases
+      tags: [user]
+      summary: Get user purchases
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+
+  /user/saved-packs:
+    get:
+      operationId: getUserSavedPacks
+      tags: [user]
+      summary: Get user saved/wishlisted packs
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pack"
+
+  /user/saved-packs/{packId}:
+    post:
+      operationId: savePack
+      tags: [user]
+      summary: Save a pack to wishlist
+      parameters:
+        - name: packId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+    delete:
+      operationId: unsavePack
+      tags: [user]
+      summary: Remove a pack from wishlist
+      parameters:
+        - name: packId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /user/downloads/{packId}:
+    get:
+      operationId: getDownloadUrl
+      tags: [user]
+      summary: Get download URL for a purchased pack
+      parameters:
+        - name: packId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: fileType
+          in: query
+          schema:
+            type: string
+            enum: [PDF, ZIP]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DownloadUrlResponse"
+
+  /user/password:
+    patch:
+      operationId: updatePassword
+      tags: [user]
+      summary: Update password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePasswordBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  # Reviews
+  /reviews/{packId}:
+    get:
+      operationId: getPackReviews
+      tags: [reviews]
+      summary: Get reviews for a pack
+      parameters:
+        - name: packId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewListResponse"
+    post:
+      operationId: createReview
+      tags: [reviews]
+      summary: Create a review
+      parameters:
+        - name: packId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReviewBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Review"
+
+  /reviews/{packId}/{reviewId}:
+    patch:
+      operationId: updateReview
+      tags: [reviews]
+      summary: Update a review
+      parameters:
+        - name: packId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: reviewId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReviewBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Review"
+    delete:
+      operationId: deleteReview
+      tags: [reviews]
+      summary: Delete a review
+      parameters:
+        - name: packId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: reviewId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  # Checkout
+  /checkout/session:
+    post:
+      operationId: createCheckoutSession
+      tags: [checkout]
+      summary: Create checkout session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCheckoutBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutSessionResponse"
+
+  /checkout/free:
+    post:
+      operationId: claimFreePack
+      tags: [checkout]
+      summary: Claim a free pack
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClaimFreeBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /checkout/webhook:
+    post:
+      operationId: stripeWebhook
+      tags: [checkout]
+      summary: Stripe webhook
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  # Orders
+  /orders:
+    get:
+      operationId: listOrders
+      tags: [orders]
+      summary: List user orders
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+
+  /orders/{id}:
+    get:
+      operationId: getOrder
+      tags: [orders]
+      summary: Get order detail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderDetail"
+
+  # Coupons
+  /coupons/validate:
+    post:
+      operationId: validateCoupon
+      tags: [coupons]
+      summary: Validate a coupon code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidateCouponBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CouponValidateResponse"
+
+  # Admin endpoints
+  /admin/dashboard:
+    get:
+      operationId: getAdminDashboard
+      tags: [admin]
+      summary: Get admin dashboard KPIs
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDashboard"
+
+  /admin/packs:
+    get:
+      operationId: adminListPacks
+      tags: [admin]
+      summary: Admin list all packs
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPackListResponse"
+    post:
+      operationId: adminCreatePack
+      tags: [admin]
+      summary: Admin create a pack
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCreatePackBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPack"
+
+  /admin/packs/{id}:
+    get:
+      operationId: adminGetPack
+      tags: [admin]
+      summary: Admin get pack detail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPackDetail"
+    patch:
+      operationId: adminUpdatePack
+      tags: [admin]
+      summary: Admin update a pack
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUpdatePackBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPack"
+    delete:
+      operationId: adminDeletePack
+      tags: [admin]
+      summary: Admin delete a pack
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /admin/packs/{id}/status:
+    patch:
+      operationId: adminUpdatePackStatus
+      tags: [admin]
+      summary: Admin update pack status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStatusBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPack"
+
+  /admin/prompts/{id}:
+    patch:
+      operationId: adminUpdatePrompt
+      tags: [admin]
+      summary: Admin update a prompt
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePromptBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Prompt"
+
+  /admin/moderation:
+    get:
+      operationId: getModerationQueue
+      tags: [admin]
+      summary: Get moderation queue
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPackListResponse"
+
+  /admin/moderation/{id}/approve:
+    post:
+      operationId: approvePack
+      tags: [admin]
+      summary: Approve a pack
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModerationActionBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPack"
+
+  /admin/moderation/{id}/reject:
+    post:
+      operationId: rejectPack
+      tags: [admin]
+      summary: Reject a pack
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModerationActionBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPack"
+
+  /admin/automation:
+    get:
+      operationId: listAutomationJobs
+      tags: [admin]
+      summary: List automation jobs
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: jobType
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobListResponse"
+    post:
+      operationId: triggerAutomationJob
+      tags: [admin]
+      summary: Trigger an automation job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TriggerJobBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutomationJob"
+
+  /admin/automation/{id}/retry:
+    post:
+      operationId: retryAutomationJob
+      tags: [admin]
+      summary: Retry a failed automation job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutomationJob"
+
+  /admin/automation/{id}/cancel:
+    post:
+      operationId: cancelAutomationJob
+      tags: [admin]
+      summary: Cancel an automation job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutomationJob"
+
+  /admin/analytics:
+    get:
+      operationId: getAdminAnalytics
+      tags: [admin]
+      summary: Get analytics data
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [7d, 30d, 90d]
+            default: 30d
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsResponse"
+
+  /admin/users:
+    get:
+      operationId: adminListUsers
+      tags: [admin]
+      summary: Admin list users
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: role
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserListResponse"
+
+  /admin/users/{id}:
+    get:
+      operationId: adminGetUser
+      tags: [admin]
+      summary: Admin get user detail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserDetail"
+    patch:
+      operationId: adminUpdateUser
+      tags: [admin]
+      summary: Admin update user (role/status)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUpdateUserBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /admin/categories:
+    get:
+      operationId: adminListCategories
+      tags: [admin]
+      summary: Admin list categories
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+    post:
+      operationId: adminCreateCategory
+      tags: [admin]
+      summary: Admin create category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCategoryBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+
+  /admin/categories/{id}:
+    patch:
+      operationId: adminUpdateCategory
+      tags: [admin]
+      summary: Admin update category
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCategoryBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+    delete:
+      operationId: adminDeleteCategory
+      tags: [admin]
+      summary: Admin delete category
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /admin/coupons:
+    get:
+      operationId: adminListCoupons
+      tags: [admin]
+      summary: Admin list coupons
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Coupon"
+    post:
+      operationId: adminCreateCoupon
+      tags: [admin]
+      summary: Admin create coupon
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCouponBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Coupon"
+
+  /admin/coupons/{id}:
+    patch:
+      operationId: adminUpdateCoupon
+      tags: [admin]
+      summary: Admin update coupon
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCouponBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Coupon"
+    delete:
+      operationId: adminDeleteCoupon
+      tags: [admin]
+      summary: Admin delete coupon
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /admin/settings:
+    get:
+      operationId: getAdminSettings
+      tags: [admin]
+      summary: Get system settings
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemSettings"
+    patch:
+      operationId: updateAdminSettings
+      tags: [admin]
+      summary: Update system settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SystemSettings"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemSettings"
+
+  /admin/files:
+    get:
+      operationId: adminListFiles
+      tags: [admin]
+      summary: Admin list generated files
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileListResponse"
+
+  /admin/files/{id}/regenerate:
+    post:
+      operationId: adminRegenerateFile
+      tags: [admin]
+      summary: Admin regenerate a file
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /admin/pricing:
+    get:
+      operationId: getAdminPricing
+      tags: [admin]
+      summary: Get pricing rules
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PricingRulesResponse"
+    patch:
+      operationId: updateAdminPricing
+      tags: [admin]
+      summary: Update pricing rules
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePricingBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /stats:
+    get:
+      operationId: getSiteStats
+      tags: [packs]
+      summary: Get site stats for homepage
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteStats"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+        - error
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+
+    # Auth
+    RegisterBody:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        displayName:
+          type: string
+      required:
+        - email
+        - password
+        - displayName
+
+    LoginBody:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      required:
+        - email
+        - password
+
+    RefreshTokenBody:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+      required:
+        - refreshToken
+
+    ForgotPasswordBody:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+      required:
+        - email
+
+    ResetPasswordBody:
+      type: object
+      properties:
+        token:
+          type: string
+        password:
+          type: string
+          minLength: 8
+      required:
+        - token
+        - password
+
+    VerifyEmailBody:
+      type: object
+      properties:
+        token:
+          type: string
+      required:
+        - token
+
+    AuthResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+      required:
+        - user
+        - accessToken
+        - refreshToken
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        displayName:
+          type: string
+        avatarUrl:
+          type: ["string", "null"]
+        bio:
+          type: ["string", "null"]
+        role:
+          type: string
+          enum: [BUYER, ADMIN, SUPER_ADMIN]
+        status:
+          type: string
+          enum: [ACTIVE, SUSPENDED, PENDING, DELETED]
+        emailVerifiedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - email
+        - displayName
+        - role
+        - status
+        - createdAt
+
+    UpdateProfileBody:
+      type: object
+      properties:
+        displayName:
+          type: string
+        bio:
+          type: string
+        avatarUrl:
+          type: string
+
+    UpdatePasswordBody:
+      type: object
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          type: string
+          minLength: 8
+      required:
+        - currentPassword
+        - newPassword
+
+    # Category
+    Category:
+      type: object
+      properties:
+        id:
+          type: integer
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        icon:
+          type: ["string", "null"]
+        color:
+          type: ["string", "null"]
+        packCount:
+          type: integer
+        isFeatured:
+          type: boolean
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - slug
+        - name
+        - packCount
+        - isFeatured
+        - sortOrder
+        - createdAt
+
+    CreateCategoryBody:
+      type: object
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        icon:
+          type: string
+        color:
+          type: string
+        sortOrder:
+          type: integer
+        isFeatured:
+          type: boolean
+      required:
+        - slug
+        - name
+
+    # Pack
+    Pack:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        slug:
+          type: string
+        shortDescription:
+          type: ["string", "null"]
+        categoryId:
+          type: integer
+        categoryName:
+          type: ["string", "null"]
+        categorySlug:
+          type: ["string", "null"]
+        status:
+          type: string
+        aiToolTargets:
+          type: array
+          items:
+            type: string
+        promptCount:
+          type: integer
+        priceCents:
+          type: integer
+        comparePriceCents:
+          type: ["integer", "null"]
+        isFree:
+          type: boolean
+        isFeatured:
+          type: boolean
+        isBestseller:
+          type: boolean
+        thumbnailUrl:
+          type: ["string", "null"]
+        tags:
+          type: array
+          items:
+            type: string
+        totalDownloads:
+          type: integer
+        avgRating:
+          type: ["number", "null"]
+        reviewCount:
+          type: integer
+        publishedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - title
+        - slug
+        - categoryId
+        - status
+        - aiToolTargets
+        - promptCount
+        - priceCents
+        - isFree
+        - isFeatured
+        - isBestseller
+        - tags
+        - totalDownloads
+        - reviewCount
+        - createdAt
+
+    PackDetail:
+      allOf:
+        - $ref: "#/components/schemas/Pack"
+        - type: object
+          properties:
+            description:
+              type: ["string", "null"]
+            seoTitle:
+              type: ["string", "null"]
+            seoDescription:
+              type: ["string", "null"]
+            previewImageUrl:
+              type: ["string", "null"]
+            prompts:
+              type: array
+              items:
+                $ref: "#/components/schemas/PromptPreview"
+            isPurchased:
+              type: boolean
+          required:
+            - isPurchased
+
+    PackListResponse:
+      type: object
+      properties:
+        packs:
+          type: array
+          items:
+            $ref: "#/components/schemas/Pack"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        totalPages:
+          type: integer
+      required:
+        - packs
+        - total
+        - page
+        - limit
+        - totalPages
+
+    AdminPack:
+      allOf:
+        - $ref: "#/components/schemas/Pack"
+        - type: object
+          properties:
+            description:
+              type: ["string", "null"]
+            totalRevenueCents:
+              type: integer
+            moderatedAt:
+              type: ["string", "null"]
+              format: date-time
+            publishedAt:
+              type: ["string", "null"]
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+
+    AdminPackDetail:
+      allOf:
+        - $ref: "#/components/schemas/AdminPack"
+        - type: object
+          properties:
+            prompts:
+              type: array
+              items:
+                $ref: "#/components/schemas/Prompt"
+            files:
+              type: array
+              items:
+                $ref: "#/components/schemas/GeneratedFile"
+            moderationLogs:
+              type: array
+              items:
+                $ref: "#/components/schemas/ModerationLog"
+
+    AdminPackListResponse:
+      type: object
+      properties:
+        packs:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminPack"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        totalPages:
+          type: integer
+      required:
+        - packs
+        - total
+        - page
+        - limit
+        - totalPages
+
+    AdminCreatePackBody:
+      type: object
+      properties:
+        title:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        shortDescription:
+          type: string
+        categoryId:
+          type: integer
+        priceCents:
+          type: integer
+        isFree:
+          type: boolean
+        aiToolTargets:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+      required:
+        - title
+        - categoryId
+        - priceCents
+
+    AdminUpdatePackBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        shortDescription:
+          type: string
+        categoryId:
+          type: integer
+        priceCents:
+          type: integer
+        comparePriceCents:
+          type: integer
+        isFree:
+          type: boolean
+        isFeatured:
+          type: boolean
+        isBestseller:
+          type: boolean
+        aiToolTargets:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        seoTitle:
+          type: string
+        seoDescription:
+          type: string
+
+    UpdateStatusBody:
+      type: object
+      properties:
+        status:
+          type: string
+        notes:
+          type: string
+      required:
+        - status
+
+    ModerationActionBody:
+      type: object
+      properties:
+        notes:
+          type: string
+
+    # Prompt
+    PromptPreview:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        body:
+          type: string
+        aiTool:
+          type: ["string", "null"]
+        useCase:
+          type: ["string", "null"]
+        isBlurred:
+          type: boolean
+        sortOrder:
+          type: integer
+      required:
+        - id
+        - title
+        - body
+        - isBlurred
+        - sortOrder
+
+    Prompt:
+      type: object
+      properties:
+        id:
+          type: integer
+        packId:
+          type: integer
+        title:
+          type: string
+        body:
+          type: string
+        description:
+          type: ["string", "null"]
+        aiTool:
+          type: ["string", "null"]
+        useCase:
+          type: ["string", "null"]
+        exampleOutput:
+          type: ["string", "null"]
+        status:
+          type: string
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - packId
+        - title
+        - body
+        - status
+        - sortOrder
+        - createdAt
+
+    UpdatePromptBody:
+      type: object
+      properties:
+        title:
+          type: string
+        body:
+          type: string
+        description:
+          type: string
+        aiTool:
+          type: string
+        useCase:
+          type: string
+        exampleOutput:
+          type: string
+        sortOrder:
+          type: integer
+
+    # Review
+    Review:
+      type: object
+      properties:
+        id:
+          type: integer
+        packId:
+          type: integer
+        userId:
+          type: integer
+        userDisplayName:
+          type: string
+        userAvatarUrl:
+          type: ["string", "null"]
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        title:
+          type: ["string", "null"]
+        body:
+          type: ["string", "null"]
+        isVerified:
+          type: boolean
+        helpfulCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - packId
+        - userId
+        - userDisplayName
+        - rating
+        - isVerified
+        - helpfulCount
+        - createdAt
+
+    ReviewListResponse:
+      type: object
+      properties:
+        reviews:
+          type: array
+          items:
+            $ref: "#/components/schemas/Review"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        totalPages:
+          type: integer
+        avgRating:
+          type: ["number", "null"]
+        ratingDistribution:
+          type: object
+          additionalProperties:
+            type: integer
+      required:
+        - reviews
+        - total
+        - page
+        - limit
+        - totalPages
+
+    CreateReviewBody:
+      type: object
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        title:
+          type: string
+        body:
+          type: string
+      required:
+        - rating
+
+    # Order
+    Order:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        status:
+          type: string
+          enum: [PENDING, COMPLETED, FAILED, REFUNDED, DISPUTED]
+        subtotalCents:
+          type: integer
+        discountCents:
+          type: integer
+        taxCents:
+          type: integer
+        totalCents:
+          type: integer
+        currency:
+          type: string
+        stripePaymentIntentId:
+          type: ["string", "null"]
+        completedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+      required:
+        - id
+        - userId
+        - status
+        - subtotalCents
+        - discountCents
+        - taxCents
+        - totalCents
+        - currency
+        - createdAt
+
+    OrderItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        packId:
+          type: integer
+        packSlug:
+          type: string
+        titleSnapshot:
+          type: string
+        priceCents:
+          type: integer
+        downloadCount:
+          type: integer
+        firstDownloadedAt:
+          type: ["string", "null"]
+          format: date-time
+      required:
+        - id
+        - packId
+        - packSlug
+        - titleSnapshot
+        - priceCents
+        - downloadCount
+
+    OrderDetail:
+      allOf:
+        - $ref: "#/components/schemas/Order"
+
+    # Checkout
+    CreateCheckoutBody:
+      type: object
+      properties:
+        packIds:
+          type: array
+          items:
+            type: integer
+        couponCode:
+          type: string
+      required:
+        - packIds
+
+    ClaimFreeBody:
+      type: object
+      properties:
+        packId:
+          type: integer
+      required:
+        - packId
+
+    CheckoutSessionResponse:
+      type: object
+      properties:
+        sessionUrl:
+          type: string
+        sessionId:
+          type: string
+        orderId:
+          type: integer
+        isMock:
+          type: boolean
+      required:
+        - orderId
+        - isMock
+
+    # Coupon
+    ValidateCouponBody:
+      type: object
+      properties:
+        code:
+          type: string
+        subtotalCents:
+          type: integer
+      required:
+        - code
+
+    Coupon:
+      type: object
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+        discountType:
+          type: string
+          enum: [PERCENT, FIXED]
+        discountValue:
+          type: number
+        minOrderCents:
+          type: ["integer", "null"]
+        maxUses:
+          type: ["integer", "null"]
+        usesCount:
+          type: integer
+        validFrom:
+          type: ["string", "null"]
+          format: date-time
+        validUntil:
+          type: ["string", "null"]
+          format: date-time
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - code
+        - discountType
+        - discountValue
+        - usesCount
+        - isActive
+        - createdAt
+
+    CouponValidateResponse:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        coupon:
+          $ref: "#/components/schemas/Coupon"
+        discountCents:
+          type: integer
+        message:
+          type: string
+      required:
+        - valid
+        - discountCents
+        - message
+
+    CreateCouponBody:
+      type: object
+      properties:
+        code:
+          type: string
+        discountType:
+          type: string
+          enum: [PERCENT, FIXED]
+        discountValue:
+          type: number
+        minOrderCents:
+          type: integer
+        maxUses:
+          type: integer
+        validFrom:
+          type: string
+          format: date-time
+        validUntil:
+          type: string
+          format: date-time
+        isActive:
+          type: boolean
+      required:
+        - code
+        - discountType
+        - discountValue
+
+    # Automation
+    AutomationJob:
+      type: object
+      properties:
+        id:
+          type: integer
+        jobType:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, RUNNING, COMPLETED, FAILED, RETRYING, DEAD]
+        priority:
+          type: integer
+        payload:
+          type: object
+        result:
+          type: ["object", "null"]
+        errorMessage:
+          type: ["string", "null"]
+        retryCount:
+          type: integer
+        maxRetries:
+          type: integer
+        relatedPackId:
+          type: ["integer", "null"]
+        triggeredBy:
+          type: ["string", "null"]
+        startedAt:
+          type: ["string", "null"]
+          format: date-time
+        completedAt:
+          type: ["string", "null"]
+          format: date-time
+        durationMs:
+          type: ["integer", "null"]
+        aiTokensUsed:
+          type: ["integer", "null"]
+        aiCostUsdCents:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - jobType
+        - status
+        - priority
+        - payload
+        - retryCount
+        - maxRetries
+        - createdAt
+
+    JobListResponse:
+      type: object
+      properties:
+        jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/AutomationJob"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        totalPages:
+          type: integer
+      required:
+        - jobs
+        - total
+        - page
+        - limit
+        - totalPages
+
+    TriggerJobBody:
+      type: object
+      properties:
+        jobType:
+          type: string
+          enum: [GENERATE_PROMPTS, GENERATE_PACK, GENERATE_PDF, GENERATE_ZIP, GENERATE_IMAGE, CREATE_LISTING]
+        packId:
+          type: integer
+        payload:
+          type: object
+      required:
+        - jobType
+
+    # Generated file
+    GeneratedFile:
+      type: object
+      properties:
+        id:
+          type: integer
+        packId:
+          type: integer
+        fileType:
+          type: string
+          enum: [PDF, ZIP, THUMBNAIL, PREVIEW_IMAGE]
+        status:
+          type: string
+          enum: [QUEUED, GENERATING, READY, FAILED]
+        publicUrl:
+          type: ["string", "null"]
+        fileSizeBytes:
+          type: ["integer", "null"]
+        generationCompletedAt:
+          type: ["string", "null"]
+          format: date-time
+        errorMessage:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - packId
+        - fileType
+        - status
+        - createdAt
+
+    FileListResponse:
+      type: object
+      properties:
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/GeneratedFile"
+        total:
+          type: integer
+        page:
+          type: integer
+        totalPages:
+          type: integer
+      required:
+        - files
+        - total
+        - page
+        - totalPages
+
+    # Moderation log
+    ModerationLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        entityType:
+          type: string
+        entityId:
+          type: integer
+        action:
+          type: string
+          enum: [APPROVE, REJECT, FLAG, EDIT_AND_APPROVE]
+        adminId:
+          type: integer
+        notes:
+          type: ["string", "null"]
+        beforeStatus:
+          type: ["string", "null"]
+        afterStatus:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - entityType
+        - entityId
+        - action
+        - adminId
+        - createdAt
+
+    # Admin Dashboard
+    AdminDashboard:
+      type: object
+      properties:
+        totalRevenueCents:
+          type: integer
+        totalOrders:
+          type: integer
+        totalUsers:
+          type: integer
+        totalPacks:
+          type: integer
+        publishedPacks:
+          type: integer
+        pendingModerationCount:
+          type: integer
+        activeJobsCount:
+          type: integer
+        recentOrders:
+          type: array
+          items:
+            $ref: "#/components/schemas/Order"
+        revenueByDay:
+          type: array
+          items:
+            $ref: "#/components/schemas/RevenueDataPoint"
+      required:
+        - totalRevenueCents
+        - totalOrders
+        - totalUsers
+        - totalPacks
+        - publishedPacks
+        - pendingModerationCount
+        - activeJobsCount
+        - recentOrders
+        - revenueByDay
+
+    RevenueDataPoint:
+      type: object
+      properties:
+        date:
+          type: string
+        revenueCents:
+          type: integer
+        orders:
+          type: integer
+      required:
+        - date
+        - revenueCents
+        - orders
+
+    AnalyticsResponse:
+      type: object
+      properties:
+        totalRevenueCents:
+          type: integer
+        totalOrders:
+          type: integer
+        totalDownloads:
+          type: integer
+        newUsers:
+          type: integer
+        revenueByDay:
+          type: array
+          items:
+            $ref: "#/components/schemas/RevenueDataPoint"
+        topPacks:
+          type: array
+          items:
+            $ref: "#/components/schemas/PackStats"
+        searchTerms:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchTerm"
+      required:
+        - totalRevenueCents
+        - totalOrders
+        - totalDownloads
+        - newUsers
+        - revenueByDay
+        - topPacks
+        - searchTerms
+
+    PackStats:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        slug:
+          type: string
+        totalDownloads:
+          type: integer
+        totalRevenueCents:
+          type: integer
+        avgRating:
+          type: ["number", "null"]
+        reviewCount:
+          type: integer
+      required:
+        - id
+        - title
+        - slug
+        - totalDownloads
+        - totalRevenueCents
+        - reviewCount
+
+    SearchTerm:
+      type: object
+      properties:
+        term:
+          type: string
+        count:
+          type: integer
+      required:
+        - term
+        - count
+
+    UserListResponse:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        totalPages:
+          type: integer
+      required:
+        - users
+        - total
+        - page
+        - limit
+        - totalPages
+
+    AdminUserDetail:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          properties:
+            orders:
+              type: array
+              items:
+                $ref: "#/components/schemas/Order"
+            totalSpentCents:
+              type: integer
+          required:
+            - orders
+            - totalSpentCents
+
+    AdminUpdateUserBody:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [BUYER, ADMIN, SUPER_ADMIN]
+        status:
+          type: string
+          enum: [ACTIVE, SUSPENDED, PENDING, DELETED]
+
+    SystemSettings:
+      type: object
+      properties:
+        aiModel:
+          type: string
+        maxPromptsPerPack:
+          type: integer
+        defaultPriceCents:
+          type: integer
+        enableStripe:
+          type: boolean
+        enableEmailVerification:
+          type: boolean
+        maintenanceMode:
+          type: boolean
+        siteTitle:
+          type: string
+        siteDescription:
+          type: string
+
+    PricingRulesResponse:
+      type: object
+      properties:
+        defaultPriceCents:
+          type: integer
+        categoryPricing:
+          type: array
+          items:
+            $ref: "#/components/schemas/CategoryPricing"
+      required:
+        - defaultPriceCents
+        - categoryPricing
+
+    CategoryPricing:
+      type: object
+      properties:
+        categoryId:
+          type: integer
+        categoryName:
+          type: string
+        defaultPriceCents:
+          type: integer
+      required:
+        - categoryId
+        - categoryName
+        - defaultPriceCents
+
+    UpdatePricingBody:
+      type: object
+      properties:
+        defaultPriceCents:
+          type: integer
+        categoryPricing:
+          type: array
+          items:
+            $ref: "#/components/schemas/CategoryPricing"
+
+    DownloadUrlResponse:
+      type: object
+      properties:
+        url:
+          type: string
+        fileType:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+      required:
+        - url
+        - fileType
+        - expiresAt
+
+    SiteStats:
+      type: object
+      properties:
+        totalPrompts:
+          type: integer
+        totalPacks:
+          type: integer
+        totalCategories:
+          type: integer
+        totalUsers:
+          type: integer
+      required:
+        - totalPrompts
+        - totalPacks
+        - totalCategories
+        - totalUsers

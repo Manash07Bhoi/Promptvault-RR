@@ -1,0 +1,26 @@
+packages:
+  "framer-motion": "For page transitions and complex staggered enter animations"
+  "zustand": "For global auth and cart state management"
+  "recharts": "For admin dashboard analytics charts"
+  "react-hook-form": "For robust form handling with validation"
+  "@hookform/resolvers": "For Zod schema validation integration"
+  "zod": "For form schema validation matching API types"
+  "clsx": "Utility for constructing className strings conditionally"
+  "tailwind-merge": "Utility to efficiently merge Tailwind CSS classes"
+  "date-fns": "For formatting timestamps in reviews and orders"
+
+images:
+  - path: "artifacts/promptvault/public/images/hero-bg.png"
+    description: "Deep navy and dark purple abstract gradient mesh background with glowing neon cyan and purple streaks, futuristic cyberpunk luxury aesthetic, ultra high resolution"
+    aspect_ratio: "16:9"
+  - path: "artifacts/promptvault/public/images/auth-bg.png"
+    description: "Dark cinematic lighting over a futuristic glowing server room or abstract data nodes, deep blue and magenta hues, shallow depth of field"
+    aspect_ratio: "16:9"
+  - path: "artifacts/promptvault/public/images/avatar-placeholder.png"
+    description: "Abstract geometric 3D shape resembling a face or futuristic helmet, glossy neon materials on dark background, suitable for a user profile avatar"
+    aspect_ratio: "1:1"
+
+notes:
+  - Standard wouter routing setup as per base project
+  - Using generated Orval hooks from @workspace/api-client-react for all data fetching
+  - Assuming API runs on same origin (proxy /api) and handles auth headers/cookies via customFetch

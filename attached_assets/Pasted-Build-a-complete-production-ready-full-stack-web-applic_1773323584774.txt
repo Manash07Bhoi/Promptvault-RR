@@ -1,0 +1,575 @@
+Build a complete, production-ready full-stack web application called "PromptVault" — an AI Prompt Marketplace platform. Follow every instruction below exactly and completely before stopping.
+
+═══════════════════════════════════════════════
+TECH STACK — USE EXACTLY THESE
+═══════════════════════════════════════════════
+
+Frontend:
+- React 18 + TypeScript + Vite
+- Tailwind CSS (dark mode default)
+- Framer Motion (animations)
+- Zustand (state management)
+- React Query / TanStack Query (server state)
+- React Router v6 (routing)
+- Recharts (admin charts)
+- Lucide React (icons)
+- Axios (HTTP client)
+
+Backend:
+- Node.js + Express + TypeScript
+- PostgreSQL (via pg + Prisma ORM)
+- Redis (via ioredis + BullMQ for job queues)
+- JWT authentication (jsonwebtoken, RS256)
+- bcrypt (password hashing)
+- Multer + Sharp (image processing)
+- Puppeteer (PDF generation)
+- Archiver (ZIP generation)
+- AWS SDK v3 (S3 file storage — use local disk as fallback if no S3 keys)
+- Stripe (payments)
+- Nodemailer / Resend (email)
+- Socket.IO (WebSocket real-time events)
+- Zod (request validation)
+- Helmet + cors + express-rate-limit (security)
+
+═══════════════════════════════════════════════
+PROJECT STRUCTURE
+═══════════════════════════════════════════════
+
+/
+├── client/                  ← React frontend
+│   ├── src/
+│   │   ├── components/      ← Reusable UI components
+│   │   ├── pages/           ← One file per screen/route
+│   │   ├── layouts/         ← PublicLayout, DashboardLayout, AdminLayout
+│   │   ├── hooks/           ← Custom React hooks
+│   │   ├── stores/          ← Zustand stores
+│   │   ├── api/             ← Axios API client + typed endpoints
+│   │   ├── types/           ← Shared TypeScript types
+│   │   └── utils/           ← Helpers, formatters, constants
+│   └── index.html
+├── server/
+│   ├── src/
+│   │   ├── routes/          ← Express route files
+│   │   ├── controllers/     ← Business logic
+│   │   ├── middleware/      ← Auth, validation, rate limiting
+│   │   ├── services/        ← AI, PDF, ZIP, email, payment services
+│   │   ├── workers/         ← BullMQ job workers
+│   │   ├── jobs/            ← Job definitions and processors
+│   │   ├── prisma/          ← Prisma schema + migrations
+│   │   └── utils/           ← Shared utilities
+│   └── tsconfig.json
+├── prisma/
+│   └── schema.prisma        ← Full database schema
+├── .env.example
+└── package.json (monorepo root with workspaces)
+
+═══════════════════════════════════════════════
+PHASE 1 — DATABASE SCHEMA (Prisma)
+═══════════════════════════════════════════════
+
+Create prisma/schema.prisma with ALL of these models:
+
+1. User — id, email, emailVerifiedAt, passwordHash, role (BUYER/ADMIN/SUPER_ADMIN), status (ACTIVE/SUSPENDED/PENDING/DELETED), displayName, avatarUrl, bio, stripeCustomerId, preferences (Json), lastLoginAt, createdAt, updatedAt, deletedAt
+
+2. Category — id, slug, name, description, icon, color, parentId (self-relation), sortOrder, isFeatured, packCount, createdAt
+
+3. PromptPack — id, title, slug, description, shortDescription, categoryId, status (DRAFT/AI_GENERATED/PENDING_REVIEW/APPROVED/REJECTED/PUBLISHED/ARCHIVED), aiToolTargets (String[]), promptCount, priceCents, comparePriceCents, isFree, isFeatured, isBestseller, thumbnailUrl, previewImageUrl, tags (String[]), seoTitle, seoDescription, totalDownloads, totalRevenueCents, avgRating, reviewCount, version, aiGenerationId, moderatedBy, moderatedAt, publishedAt, createdAt, updatedAt, deletedAt
+
+4. Prompt — id, packId, title, body, description, aiTool, status (DRAFT/GENERATED/APPROVED/REJECTED/ARCHIVED), useCase, variables (Json), exampleOutput, sortOrder, version, createdAt, updatedAt
+
+5. PromptVersion — id, promptId, version, body, changedBy, changeReason, createdAt
+
+6. GeneratedFile — id, packId, fileType (PDF/ZIP/THUMBNAIL/PREVIEW_IMAGE), status (QUEUED/GENERATING/READY/FAILED), storageKey, publicUrl, fileSizeBytes, checksumSha256, generationStartedAt, generationCompletedAt, errorMessage, createdAt
+
+7. Order — id, userId, status (PENDING/COMPLETED/FAILED/REFUNDED/DISPUTED), subtotalCents, discountCents, taxCents, totalCents, currency, stripePaymentIntentId, stripeSessionId, refundedAt, refundReason, completedAt, ipAddress, userAgent, createdAt, updatedAt
+
+8. OrderItem — id, orderId, packId, priceCents, titleSnapshot, downloadCount, firstDownloadedAt
+
+9. AutomationJob — id, jobType (GENERATE_PROMPTS/GENERATE_PACK/GENERATE_PDF/GENERATE_ZIP/GENERATE_IMAGE/CREATE_LISTING/SEND_EMAIL), status (PENDING/RUNNING/COMPLETED/FAILED/RETRYING/DEAD), priority, payload (Json), result (Json), errorMessage, retryCount, maxRetries, relatedPackId, triggeredBy, bullJobId, startedAt, completedAt, durationMs, aiTokensUsed, aiCostUsdCents, createdAt
+
+10. Review — id, packId, userId, orderId, rating, title, body, isVerified, isFlagged, helpfulCount, createdAt, updatedAt
+
+11. Tag — id, name, slug, usageCount
+
+12. PackTag — packId, tagId (composite PK)
+
+13. Coupon — id, code, discountType (PERCENT/FIXED), discountValue, minOrderCents, maxUses, usesCount, validFrom, validUntil, isActive, createdAt
+
+14. AnalyticsEvent — id, eventType, userId, sessionId, packId, properties (Json), ipAddress, userAgent, createdAt
+
+15. ModerationLog — id, entityType, entityId, action (APPROVE/REJECT/FLAG/EDIT_AND_APPROVE), adminId, notes, beforeStatus, afterStatus, createdAt
+
+16. EmailQueue — id, toEmail, templateId, payload (Json), status, sentAt, errorMessage, retryCount, createdAt
+
+17. SavedPack — userId, packId (composite PK), createdAt
+
+Run: npx prisma generate && npx prisma migrate dev --name init
+
+Also create a seed script (prisma/seed.ts) that creates:
+- 10 categories (Marketing, Coding, Writing, Business, Design, Productivity, AI Agents, Image Generation, Video Generation, Education) with icons and colors
+- 1 admin user (admin@promptvault.com / Admin123!)
+- 5 sample published packs with 10 prompts each
+- 3 sample tags
+
+═══════════════════════════════════════════════
+PHASE 2 — COMPLETE BACKEND
+═══════════════════════════════════════════════
+
+Build ALL of these in server/src/:
+
+── MIDDLEWARE ──
+- auth.middleware.ts — JWT verification, attach user to req
+- admin.middleware.ts — Check role === ADMIN or SUPER_ADMIN
+- validate.middleware.ts — Zod schema validation wrapper
+- rateLimit.middleware.ts — Per-route rate limiters
+- errorHandler.middleware.ts — Global error handler, consistent JSON error envelope
+
+── SERVICES ──
+
+1. ai.service.ts
+   - generatePrompts(category, count, packTitle, aiTools) — calls Anthropic Claude API (model: claude-3-5-sonnet-20241022), returns array of {title, body, useCase, exampleOutput}
+   - generatePackMetadata(category, prompts[]) — returns {title, description, shortDescription, tags, seoTitle, seoDescription, suggestedPriceCents}
+   - If ANTHROPIC_API_KEY not set, return high-quality hardcoded mock data so the app still works
+
+2. pdf.service.ts
+   - generatePackPDF(pack, prompts[]) — uses Puppeteer to render a beautiful HTML template to PDF
+   - HTML template: dark background, pack title header, numbered prompt list with styled code blocks, footer with promptvault.com
+   - Save to /tmp/files/{packId}.pdf, return file path
+
+3. zip.service.ts
+   - generatePackZIP(pack, pdfPath, prompts[]) — creates ZIP with PDF + prompts.txt + prompts.json + README.md
+   - Save to /tmp/files/{packId}.zip, return file path
+
+4. storage.service.ts
+   - uploadFile(localPath, key) — upload to S3 if AWS env vars set, else copy to /public/files/ and return local URL
+   - getSignedUrl(key) — presigned S3 URL or direct URL for local
+
+5. stripe.service.ts
+   - createCheckoutSession(userId, packIds[], couponCode?) — Stripe checkout session
+   - handleWebhook(event) — handle payment_intent.succeeded, charge.refunded
+   - If STRIPE_SECRET_KEY not set, use mock checkout that immediately creates a completed order
+
+6. email.service.ts
+   - sendPurchaseConfirmation(user, order, packs[])
+   - sendPasswordReset(email, token)
+   - sendEmailVerification(email, token)
+   - Uses Resend if RESEND_API_KEY set, else logs to console
+
+7. image.service.ts
+   - generatePackImage(packTitle, category, color) — calls DALL-E 3 API if key set
+   - Falls back to generating a beautiful SVG thumbnail programmatically using Sharp
+
+8. search.service.ts
+   - indexPack(pack) — add/update pack in Meilisearch if configured
+   - searchPacks(query, filters) — search via Meilisearch or fallback to PostgreSQL ILIKE
+
+── WORKERS (BullMQ) ──
+
+automation.worker.ts — processes jobs from "automation" queue:
+- GENERATE_PROMPTS: call ai.service.generatePrompts, save to DB
+- GENERATE_PACK: orchestrate full pipeline (prompts → metadata → image → PDF → ZIP → listing)
+- GENERATE_PDF: call pdf.service, upload via storage.service, update GeneratedFile
+- GENERATE_ZIP: call zip.service, upload, update GeneratedFile
+- GENERATE_IMAGE: call image.service, upload, update pack thumbnailUrl
+- CREATE_LISTING: set pack status to AI_GENERATED, create moderation queue entry, emit WebSocket event
+
+Each job must:
+- Update AutomationJob record with status/progress
+- Handle errors gracefully with retry logic
+- Log to console with job ID and type
+
+── ROUTES & CONTROLLERS ──
+
+Build full CRUD + business logic for ALL endpoints:
+
+/api/auth — register, login, refresh, logout, forgot-password, reset-password, verify-email, /me
+/api/packs — list (published, paginated, filterable by category/tag/price/aiTool/search), featured, trending, bestsellers, /:slug (detail + prompts preview)
+/api/categories — list, /:slug/packs
+/api/search — full-text search packs and prompts
+/api/user — purchases, downloads, saved packs, profile, password, account deletion
+/api/reviews — create, update, delete
+/api/checkout — create session, free claim, Stripe webhook
+/api/orders — list, detail
+/api/coupons — validate
+
+/api/admin/dashboard — KPI aggregate
+/api/admin/packs — full CRUD + status management
+/api/admin/prompts — edit individual prompts
+/api/admin/moderation — queue, approve, reject
+/api/admin/automation — list jobs, trigger, retry, cancel
+/api/admin/analytics — overview, per-pack, funnels, search analytics
+/api/admin/users — list, detail, suspend/restore, role change
+/api/admin/files — list, regenerate
+/api/admin/categories — full CRUD
+/api/admin/pricing — pricing rules, bulk update
+/api/admin/coupons — full CRUD
+/api/admin/settings — read/update system config
+
+Socket.IO events (admin namespace):
+- job:update, job:completed, job:failed
+- pack:approved, pack:rejected
+- file:ready
+- order:new
+
+Response envelope for ALL endpoints:
+{ success: boolean, data: any, meta?: { page, limit, total, cursor }, error?: { code, message, fields } }
+
+═══════════════════════════════════════════════
+PHASE 3 — COMPLETE FRONTEND
+═══════════════════════════════════════════════
+
+Build ALL 32 screens. Every screen must be fully functional — no placeholder text, no "coming soon", no empty components. Wire everything to real API calls.
+
+── DESIGN SYSTEM (globals) ──
+
+tailwind.config.ts — extend with:
+- colors: primary #6C47FF, secondary #00D4FF, accent #FF6B6B, bg-base #0D0D1A, bg-surface #1A1A2E, bg-elevated #252540
+- fontFamily: Inter (body), Fira Code (mono)
+- Custom box-shadow: glow-primary, glow-cyan
+- Dark mode: class strategy
+
+index.css — CSS custom properties matching design system, Inter + Fira Code from Google Fonts
+
+── REUSABLE COMPONENTS ──
+
+Build these shared components in client/src/components/:
+
+Layout:
+- Navbar.tsx — sticky, transparent→solid on scroll, logo, nav links, search icon, auth buttons, user avatar menu
+- Footer.tsx — 4-column, newsletter form
+- PublicLayout.tsx, DashboardLayout.tsx (sidebar), AdminLayout.tsx (sidebar with nav groups)
+- Sidebar.tsx — collapsible, nav groups for admin
+
+UI Primitives:
+- Button.tsx — variants: primary (gradient), secondary, ghost, danger, success, icon-only. All sizes. Loading spinner state.
+- Input.tsx — with label, error message, show/hide password, character counter
+- Select.tsx, Checkbox.tsx, RadioGroup.tsx, Toggle.tsx
+- Modal.tsx — with backdrop blur, scale animation
+- SlideOver.tsx — right panel for admin
+- Toast.tsx — slide-in from bottom-right, 4s auto-dismiss, progress bar, variants: success/error/warning/info
+- Badge.tsx — status badges with correct colors per status enum
+- Skeleton.tsx — shimmer loading skeleton with configurable shape
+- Pagination.tsx, InfiniteScroll.tsx
+- StarRating.tsx — interactive + display modes, animated hover
+- PriceDisplay.tsx — with compare price strikethrough
+- ProgressBar.tsx — animated width transitions
+- Tabs.tsx, Accordion.tsx, Tooltip.tsx, Dropdown.tsx
+- EmptyState.tsx — accepts illustration name, title, description, action button
+- ErrorBoundary.tsx
+
+Cards:
+- PackCard.tsx — thumbnail, category badge, AI tool pills, star rating, price, download count, wishlist heart button, hover elevation + glow
+- FeaturedPackCard.tsx — larger format for homepage
+- CategoryCard.tsx — icon, name, pack count, color glow
+- StatCard.tsx — admin KPI with label, value, delta, icon, accent bar
+- ReviewCard.tsx — stars, verified badge, title, body, date
+- OrderCard.tsx, JobCard.tsx
+
+── ALL PAGES ──
+
+PUBLIC (no auth required):
+
+1. HomePage.tsx (/)
+   - Sticky navbar
+   - Hero: full-height gradient background, animated headline, 2 CTAs, floating pack cards (CSS animation)
+   - Stats bar: 4 animated count-up numbers (total prompts, packs, categories, users)
+   - Featured packs horizontal scroll
+   - Category grid (4 cols, color glows on hover)
+   - "Trending This Week" ranked list
+   - "How It Works" 3-step section
+   - Bestsellers carousel (auto-play, pause on hover)
+   - AI Tools logo strip (infinite marquee CSS animation): ChatGPT, Claude, Midjourney, DALL-E, Gemini, Runway
+   - Signup CTA banner
+   - Footer
+   - All data fetched from API on load
+
+2. ExplorePage.tsx (/explore)
+   - Sidebar filters: category multi-select checkboxes, AI tool filter, price range slider, rating filter, sort dropdown
+   - Active filter pills (removable)
+   - Pack count + view toggle (grid/list)
+   - Infinite scroll pack grid
+   - Skeleton loaders during fetch
+   - Empty state when no results
+
+3. PackDetailPage.tsx (/packs/:slug)
+   - Breadcrumb
+   - Hero: thumbnail left, metadata right, badges, price, CTA buttons
+   - Tabs: Overview | Prompts Preview | Reviews | FAQ
+   - Prompts preview: show 5, blur rest with purchase overlay
+   - Reviews: star histogram, paginated reviews
+   - FAQ accordion
+   - Related packs horizontal scroll
+   - Sticky mobile purchase bar
+   - Social share buttons
+
+4. CategoryPage.tsx (/categories/:slug)
+   - Category hero with icon, color, description
+   - Subcategory chips
+   - Inherits explore layout with pre-filtered results
+
+5. SearchPage.tsx (/search)
+   - Auto-focused search bar
+   - Results tabs: Packs | Prompts
+   - Highlighted search terms in results
+   - Recent searches (localStorage)
+   - Suggestions on empty query
+   - "Did you mean..." for typos
+
+6. PricingPage.tsx (/pricing)
+   - 3 tier cards: Free, Pro ($19/mo), Enterprise (custom)
+   - Feature comparison table
+   - FAQ accordion
+   - Each tier CTA
+
+7. TrendingPage.tsx (/trending)
+   - Ranked list with rank badge
+   - Time filter: 24h / 7d / 30d
+   - Category filter
+
+8. CreatorProfilePage.tsx (/creator/:username)
+   - Avatar, stats, bio
+   - Grid of published packs
+
+AUTH:
+
+9.  LoginPage.tsx (/login)
+10. SignupPage.tsx (/signup)
+11. EmailVerificationPage.tsx (/verify-email)
+12. ForgotPasswordPage.tsx (/forgot-password)
+13. ResetPasswordPage.tsx (/reset-password)
+
+All auth pages: centered card, gradient background, smooth transitions, inline validation, loading states, error messages.
+
+USER DASHBOARD (requires auth, DashboardLayout):
+
+14. DashboardHome.tsx (/dashboard)
+    - Welcome message, quick stats
+    - Recent purchases (3 cards)
+    - Recommended packs
+    - Saved packs scroll
+    - Quick action buttons
+
+15. PurchasesPage.tsx (/dashboard/purchases)
+    - Sortable/searchable table of all purchases
+    - Download button per row
+    - Empty state
+
+16. DownloadCenterPage.tsx (/dashboard/downloads)
+    - Per-pack download cards
+    - PDF + ZIP download buttons with progress bars
+    - Signed URL generation on click
+
+17. WishlistPage.tsx (/dashboard/wishlist)
+    - Grid of saved packs
+    - Remove + Buy buttons
+
+18. AccountSettingsPage.tsx (/dashboard/settings)
+    - Tabs: Profile | Security | Notifications | Billing | Danger Zone
+    - All forms functional
+
+19. OrderDetailPage.tsx (/dashboard/orders/:id)
+    - Full receipt layout
+    - Download buttons per item
+
+20. WriteReviewPage.tsx (/dashboard/review/:packId)
+    - Interactive star selector
+    - Title + body fields
+    - Only accessible post-purchase
+
+ADMIN (requires admin role, AdminLayout):
+
+21. AdminDashboardPage.tsx (/admin)
+    - 6 KPI stat cards (real-time via WebSocket)
+    - Generation timeline chart (Recharts)
+    - Active jobs table with live progress
+    - Quick trigger panel
+    - Category quota panel
+    - AI cost tracker
+
+22. AutomationQueuePage.tsx (/admin/automation)
+    - Filterable job table
+    - Expandable rows with JSON payload/result
+    - Retry / cancel actions
+    - Real-time status updates via Socket.IO
+
+23. ApprovalQueuePage.tsx (/admin/approval)
+    - Pending count badge
+    - Pack list table
+    - SlideOver review panel with inline editing
+    - Approve / Reject / Skip actions
+    - Batch approval
+
+24. CategoryManagerPage.tsx (/admin/categories)
+    - Drag-to-reorder table
+    - Create/edit modal with color picker + icon picker
+
+25. PricingControlsPage.tsx (/admin/pricing)
+    - Per-category default pricing
+    - Bulk price update tool
+    - Coupon manager CRUD
+
+26. FileMonitorPage.tsx (/admin/files)
+    - Status board summary
+    - File table with retry/regenerate
+    - Storage usage display
+
+27. AnalyticsPage.tsx (/admin/analytics)
+    - Revenue area chart
+    - Pack performance table (sortable)
+    - Sales funnel chart
+    - Search analytics
+    - Date range picker (7d/30d/90d/custom)
+
+28. UserManagementPage.tsx (/admin/users)
+    - Paginated user table
+    - User detail panel (slide-over)
+    - Suspend / restore / role change actions
+
+29. PackEditorPage.tsx (/admin/packs/:id/edit)
+    - Full metadata editor
+    - Prompt list with inline editing
+    - Version history sidebar
+    - Moderation log timeline
+
+30. SystemSettingsPage.tsx (/admin/settings)
+    - Tabs: AI Config | Schedule | Payments | Email | Storage | Feature Flags
+
+31. NotificationsPage.tsx (/admin/notifications)
+    - Notification list: read/unread state
+    - Mark all read
+    - Click-to-navigate
+
+32. AdminPacksListPage.tsx (/admin/packs)
+    - All packs with all statuses
+    - Filterable by status, category
+    - Bulk actions: publish, archive, delete
+
+═══════════════════════════════════════════════
+ERROR + EMPTY STATES — BUILD ALL OF THESE
+═══════════════════════════════════════════════
+
+Global Error Pages:
+- NotFoundPage.tsx (404) — illustrated robot, "Page Not Found", home button
+- ForbiddenPage.tsx (403) — lock icon, redirect to login
+- ServerErrorPage.tsx (500) — "Something went wrong on our end", retry button
+- OfflineBanner.tsx — top banner when navigator.onLine === false
+
+Per-Component Empty States (use EmptyState component with unique message per context):
+- No purchases, no wishlist, no search results, no reviews, no orders, no notifications, approval queue empty, job queue empty, no users match filter, no packs in category, empty download center
+
+Form Validation:
+- All forms use react-hook-form + Zod resolvers
+- Inline error messages on blur
+- Server errors displayed inline (not just toast)
+- Password strength meter on signup/reset
+
+Loading States:
+- Every data-fetch shows skeleton loaders matching content shape
+- Buttons show spinner when submitting
+- Page transitions use Framer Motion (fade + translateY)
+
+═══════════════════════════════════════════════
+ANIMATIONS — IMPLEMENT ALL
+═══════════════════════════════════════════════
+
+Using Framer Motion:
+- Page transitions: fade + translateY(12px→0) on enter, 300ms
+- Modal: scale(0.95→1.0) + fade, 280ms
+- SlideOver: translateX(100%→0), 320ms
+- Pack card hover: translateY(-6px) + shadow glow, 200ms
+- Buy button success: scale pulse + checkmark + color change
+- Heart/wishlist: scale 1→1.4→1 pulse on click
+- Stats count-up: useInView + spring animation
+- Skeleton shimmer: CSS @keyframes gradient slide
+- Toast: slide-in from bottom-right, auto-dismiss progress bar
+- Tab transitions: fade + translateX, 200ms
+- Staggered card grid entrance: 50ms stagger per card
+
+CSS animations:
+- Homepage hero floating cards: CSS transform keyframes, infinite loop
+- AI tools marquee strip: infinite horizontal scroll
+- Bestsellers carousel: auto-play with 4s interval
+
+All animations disabled when prefers-reduced-motion is set.
+
+═══════════════════════════════════════════════
+ENVIRONMENT VARIABLES
+═══════════════════════════════════════════════
+
+Create .env.example with all required vars. App must work with minimal config — only DATABASE_URL and JWT_SECRET are truly required. All external services (AI, Stripe, S3, email) gracefully fall back to mocks/local storage when keys are not provided.
+
+Required:
+DATABASE_URL=postgresql://...
+REDIS_URL=redis://localhost:6379
+JWT_SECRET=your-secret-here
+JWT_REFRESH_SECRET=your-refresh-secret
+
+Optional (with fallbacks):
+ANTHROPIC_API_KEY=        ← falls back to mock prompt data
+OPENAI_API_KEY=           ← for DALL-E image generation
+STRIPE_SECRET_KEY=        ← falls back to mock checkout
+STRIPE_WEBHOOK_SECRET=
+STRIPE_PUBLISHABLE_KEY=
+RESEND_API_KEY=           ← falls back to console log
+AWS_ACCESS_KEY_ID=        ← falls back to local /public/files/
+AWS_SECRET_ACCESS_KEY=
+AWS_BUCKET_NAME=
+AWS_REGION=
+MEILISEARCH_URL=          ← falls back to PostgreSQL search
+MEILISEARCH_KEY=
+CLIENT_URL=http://localhost:5173
+PORT=3000
+
+═══════════════════════════════════════════════
+STARTUP & SCRIPTS
+═══════════════════════════════════════════════
+
+package.json (root) scripts:
+- dev: concurrently run client (vite) and server (tsx watch)
+- build: build both client and server
+- start: node dist/server/index.js (serves static client too)
+- db:migrate: prisma migrate dev
+- db:seed: prisma db seed
+- db:reset: prisma migrate reset --force && prisma db seed
+
+On server start:
+1. Connect to PostgreSQL (retry 5x with backoff)
+2. Connect to Redis (retry 5x)
+3. Run any pending Prisma migrations automatically
+4. Start BullMQ workers
+5. Start Socket.IO server
+6. Log: "PromptVault API running on port {PORT}"
+
+═══════════════════════════════════════════════
+QUALITY REQUIREMENTS
+═══════════════════════════════════════════════
+
+- Zero TypeScript errors (strict: true in tsconfig)
+- All API calls have proper error handling (try/catch, error boundaries)
+- No hardcoded credentials or secrets
+- Mobile responsive — test at 375px, 768px, 1280px
+- Accessible: semantic HTML, ARIA labels, keyboard navigation, focus rings
+- Console must be clean (no warnings) after seed + startup
+- The app must fully run with just DATABASE_URL + JWT_SECRET set
+
+═══════════════════════════════════════════════
+FINAL VERIFICATION CHECKLIST
+═══════════════════════════════════════════════
+
+Before finishing, confirm:
+✅ npx prisma migrate dev runs without errors
+✅ npm run db:seed populates data successfully  
+✅ npm run dev starts both client and server
+✅ Homepage loads with real data from seed
+✅ A pack detail page loads with prompts
+✅ User can register, verify email (console log), and log in
+✅ Admin can log in at /admin with admin@promptvault.com / Admin123!
+✅ Admin can trigger a generation job from the automation dashboard
+✅ Admin approval queue shows generated packs
+✅ Purchase flow works (mock Stripe if no key)
+✅ Download center generates and serves a file
+✅ All 32 pages render without crashing
+✅ No TypeScript compilation errors
+✅ Mobile layout works at 375px
+
+Build the entire project now. Do not stop until all phases are complete and the checklist passes.

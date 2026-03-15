@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "PromptVault"
+version = "1.0.0"
+id = "artifacts/promptvault"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+localPort = 19275
+name = "web"
+paths = ["/"]
+
+[services.development]
+run = "pnpm --filter @workspace/promptvault run dev"
+
+[services.env]
+PORT = "19275"
+BASE_PATH = "/"
+
+[services.production]
+build = ["pnpm", "--filter", "@workspace/promptvault", "run", "build"]
+publicDir = "artifacts/promptvault/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"

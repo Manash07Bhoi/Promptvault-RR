@@ -1,0 +1,1188 @@
+Looking at your summary, everything is solid. Now let me give you a targeted follow-up prompt to push Replit Agent to complete everything that's still pending from the full audit:
+
+Here's your complete follow-up prompt covering all remaining gaps:
+
+---
+
+```
+The security and authentication hardening from the previous audit is 
+confirmed complete. Now complete every remaining item that was NOT yet 
+addressed. Work through all phases below fully before stopping.
+
+Current confirmed complete:
+✅ bcrypt password hashing (cost factor 12)
+✅ JWT hardened (userId/role/sessionId only, RS256, rotation)
+✅ Helmet security headers (all 7 headers including X-Request-ID)
+✅ Rate limiting (login/register/forgot-password/search/global)
+✅ Sensitive data removed from logs (tokens, passwords)
+✅ CORS restricted to trusted origins only
+✅ Startup validation (DATABASE_URL crash on missing)
+✅ Graceful shutdown (SIGTERM/SIGINT)
+✅ Unhandled rejection + uncaught exception handlers
+✅ Health endpoints (/api/healthz, /api/health/live, /api/health/ready)
+✅ ErrorBoundary wrapping entire React app
+✅ Zero npm audit vulnerabilities
+
+═══════════════════════════════════════════════════════════════════
+REMAINING PHASE A — SECURITY GAPS NOT YET CLOSED
+═══════════════════════════════════════════════════════════════════
+
+These were in the original audit but are NOT confirmed done yet.
+Fix every single one:
+
+── A.1 Input Validation — Audit Every Endpoint ──
+
+□ Run this check right now:
+  grep -r "req.body" server/src/routes/ --include="*.ts"
+  grep -r "req.query" server/src/routes/ --include="*.ts"
+  grep -r "req.params" server/src/routes/ --include="*.ts"
+  
+  Every single result must pass through a Zod schema validator.
+  Fix every endpoint that reads req.body/query/params without Zod.
+
+□ Zod schemas must use .strict() to strip unknown fields:
+  const schema = z.object({ email: z.string().email() }).strict()
+  
+□ String fields: add .trim().max(N) to every string input
+  Limits: email 255, password 128, displayName 100, title 200,
+  description 5000, reviewBody 1000, searchQuery 200
+
+□ UUID path params validated before DB query:
+  const uuidSchema = z.string().uuid()
+  If invalid UUID format → return 400 immediately, never hit DB
+
+□ Search query: strip special chars that break ILIKE:
+  query.replace(/[%_\\]/g, '\\$&')
+
+□ Numeric inputs: z.number().int().min(0).max(N) — never accept floats
+  for price, page, limit fields
+
+── A.2 Authorization Gaps ──
+
+□ Download endpoint — add this exact triple check:
+  1. req.user exists (auth middleware)
+  2. SELECT order_items JOIN orders WHERE orders.userId = req.user.id 
+     AND order_items.packId = :packId AND orders.status = 'COMPLETED'
+     → if no row found, return 403 "You have not purchased this pack"
+  3. Only then call storage.getSignedUrl()
+  Never generate a download URL without this check.
+
+□ Review endpoints — verify ownership:
+  PATCH /api/reviews/:id → fetch review, confirm review.userId === req.user.id
+  DELETE /api/reviews/:id → same check
+  If mismatch → 403
+
+□ Order detail endpoint:
+  GET /api/orders/:id → confirm order.userId === req.user.id → else 403
+
+□ Admin pack editor:
+  All /api/admin/* routes → confirm req.user.role === 'ADMIN' 
+  or 'SUPER_ADMIN' on EVERY handler, not just on router middleware
+  (defence in depth — middleware can be misconfigured)
+
+□ Implement response field stripping — create a serialization layer:
+  
+  // server/src/utils/serialize.ts
+  export const serializeUser = (user: User) => ({
+    id: user.id,
+    email: user.email,
+    displayName: user.displayName,
+    avatarUrl: user.avatarUrl,
+    role: user.role,
+    createdAt: user.createdAt,
+    // NEVER include: passwordHash, stripeCustomerId, deletedAt
+  })
+  
+  export const serializePackPublic = (pack: PromptPack) => ({
+    // exclude: moderatedBy, aiGenerationId, totalRevenueCents
+    // these are internal admin fields
+  })
+  
+  Use these serializers on every response — never return raw Prisma objects.
+
+── A.3 SQL/NoSQL Injection — Final Verification ──
+
+□ Find every Prisma.$queryRaw or $executeRaw call:
+  grep -r "queryRaw\|executeRaw" server/src/ --include="*.ts"
+  
+  Each must use Prisma.sql tagged template literal, never string concat:
+  ✅ CORRECT: prisma.$queryRaw(Prisma.sql`SELECT * FROM users WHERE id = ${userId}`)
+  ❌ WRONG:   prisma.$queryRaw(`SELECT * FROM users WHERE id = '${userId}'`)
+  
+  Fix any that use string interpolation.
+
+□ Search query safety — find all ILIKE queries:
+  grep -r "ilike\|ILIKE\|contains\|search" server/src/ --include="*.ts"
+  Confirm all use Prisma's where: { field: { contains: query, mode: 'insensitive' } }
+  Never build raw LIKE strings.
+
+── A.4 File Upload Security (if file uploads exist) ──
+
+□ Find all multer or file upload configurations:
+  grep -r "multer\|upload\|formData" server/src/ --include="*.ts"
+
+□ For each upload endpoint, verify:
+  - MIME type checked via file-type package (magic bytes), not just extension
+  - File size limit set: 5MB max for images
+  - File renamed to: `${crypto.randomUUID()}.${ext}`
+  - Files stored in /tmp or private storage, never in /public directly
+  - If serving user uploads, route through controller that checks auth
+
+□ If no file uploads exist yet, add upload security config for 
+  the avatar upload in account settings.
+
+── A.5 Environment Variables — Final Hardening ──
+
+□ Add ALL of these startup validations to server/src/index.ts:
+
+  interface EnvConfig {
+    required: string[]
+    recommended: string[]
+  }
+  
+  const env: EnvConfig = {
+    required: [
+      'DATABASE_URL',
+      'JWT_SECRET', 
+      'JWT_REFRESH_SECRET',
+      'NODE_ENV'
+    ],
+    recommended: [
+      'ANTHROPIC_API_KEY',
+      'STRIPE_SECRET_KEY', 
+      'RESEND_API_KEY',
+      'SENTRY_DSN',
+      'REDIS_URL'
+    ]
+  }
+  
+  // Crash on missing required vars
+  const missing = env.required.filter(key => !process.env[key])
+  if (missing.length > 0) {
+    console.error(`FATAL: Missing required environment variables: ${missing.join(', ')}`)
+    process.exit(1)
+  }
+  
+  // Warn on missing recommended vars
+  const missingRecommended = env.recommended.filter(key => !process.env[key])
+  if (missingRecommended.length > 0) {
+    console.warn(`WARN: Missing recommended vars (using fallbacks): ${missingRecommended.join(', ')}`)
+  }
+  
+  // Validate JWT secret entropy
+  if (process.env.JWT_SECRET && process.env.JWT_SECRET.length < 32) {
+    console.error('FATAL: JWT_SECRET must be at least 32 characters')
+    process.exit(1)
+  }
+  
+  // Warn if running in production with test Stripe key
+  if (process.env.NODE_ENV === 'production' && 
+      process.env.STRIPE_SECRET_KEY?.startsWith('sk_test_')) {
+    console.warn('WARN: Using Stripe TEST key in production environment')
+  }
+
+□ Verify no secrets in frontend bundle:
+  npm run build
+  grep -r "sk_\|ANTHROPIC\|RESEND" client/dist/ 2>/dev/null
+  If any matches found, find and remove the leak immediately.
+
+□ Audit all VITE_ prefixed env vars:
+  grep -r "VITE_" client/src/ --include="*.ts" --include="*.tsx"
+  Only these should exist with VITE_ prefix:
+  - VITE_API_URL (API base URL — not secret)
+  - VITE_STRIPE_PUBLISHABLE_KEY (publishable — not secret by design)
+  - VITE_APP_NAME (display name — not secret)
+  Remove VITE_ prefix from anything that should be secret.
+
+── A.6 Stripe Webhook — Complete Implementation ──
+
+□ Verify webhook endpoint uses raw body parser:
+  grep -r "stripe\|webhook" server/src/routes/ --include="*.ts"
+  
+  The webhook route MUST be registered BEFORE express.json() middleware:
+  
+  // This order is CRITICAL:
+  app.post('/api/webhooks/stripe', 
+    express.raw({ type: 'application/json' }),  // ← raw body
+    stripeWebhookHandler
+  )
+  app.use(express.json())  // ← json for everything else
+
+□ Webhook handler must:
+  1. Verify signature: stripe.webhooks.constructEvent(req.body, sig, secret)
+     If throws → return 400, never 500
+  2. Check idempotency: look up event.id in Redis
+     If already processed → return 200 immediately (no double processing)
+  3. Store event.id in Redis with 24h TTL before processing
+  4. Process only these event types:
+     - payment_intent.succeeded → complete order, send email
+     - payment_intent.payment_failed → update order status to FAILED
+     - charge.refunded → update order status to REFUNDED
+  5. Return 200 within 5 seconds (process async via BullMQ if needed)
+  6. Never throw from webhook handler — always return 200 to Stripe
+
+□ Test webhook with Stripe CLI:
+  stripe listen --forward-to localhost:3000/api/webhooks/stripe
+  stripe trigger payment_intent.succeeded
+  Verify: order status updated, email queued, no 500 errors
+
+═══════════════════════════════════════════════════════════════════
+REMAINING PHASE B — DATABASE & QUERY OPTIMIZATION
+═══════════════════════════════════════════════════════════════════
+
+── B.1 Missing Indexes — Add All ──
+
+Run this migration to add all performance-critical indexes:
+
+-- Migration: add_performance_indexes
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_packs_status_published 
+  ON "PromptPack"(status, "publishedAt" DESC) 
+  WHERE status = 'PUBLISHED';
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_packs_category_status 
+  ON "PromptPack"("categoryId", status);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_packs_featured 
+  ON "PromptPack"("isFeatured", status) 
+  WHERE "isFeatured" = true;
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_packs_slug 
+  ON "PromptPack"(slug);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_prompts_pack_id 
+  ON "Prompt"("packId", "sortOrder");
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_orders_user_id 
+  ON "Order"("userId", "createdAt" DESC);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_order_items_pack_id 
+  ON "OrderItem"("packId");
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_analytics_pack_created 
+  ON "AnalyticsEvent"("packId", "createdAt" DESC);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_jobs_status_type 
+  ON "AutomationJob"(status, "jobType", "createdAt" DESC);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_reviews_pack_id 
+  ON "Review"("packId", "createdAt" DESC) 
+  WHERE "isFlagged" = false;
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_saved_packs_user 
+  ON "SavedPack"("userId");
+
+Add these to prisma/schema.prisma using @@index directives and run:
+npx prisma migrate dev --name add_performance_indexes
+
+── B.2 Fix N+1 Queries ──
+
+Find and fix these common N+1 patterns:
+
+□ Pack list endpoint — should use single query with includes:
+  
+  // ❌ N+1: fetching category for each pack in a loop
+  const packs = await prisma.promptPack.findMany(...)
+  for (const pack of packs) {
+    pack.category = await prisma.category.findUnique(...)  // N queries!
+  }
+  
+  // ✅ Single query with include
+  const packs = await prisma.promptPack.findMany({
+    include: {
+      category: { select: { id: true, name: true, slug: true, color: true, icon: true } },
+      _count: { select: { prompts: true, reviews: true } }
+    }
+  })
+
+□ Admin dashboard — aggregate all KPIs in parallel:
+  
+  const [totalRevenue, totalOrders, totalUsers, pendingJobs] = await Promise.all([
+    prisma.order.aggregate({ _sum: { totalCents: true }, where: { status: 'COMPLETED' } }),
+    prisma.order.count({ where: { status: 'COMPLETED' } }),
+    prisma.user.count({ where: { deletedAt: null } }),
+    prisma.automationJob.count({ where: { status: 'PENDING' } })
+  ])
+  // Never fetch these sequentially
+
+□ Pack detail page — single query gets pack + prompts + reviews summary:
+  
+  const pack = await prisma.promptPack.findUnique({
+    where: { slug },
+    include: {
+      category: true,
+      prompts: { 
+        take: 5,  // preview only
+        orderBy: { sortOrder: 'asc' },
+        select: { id: true, title: true, body: true, useCase: true }
+      },
+      reviews: { 
+        take: 3, 
+        orderBy: { createdAt: 'desc' },
+        include: { user: { select: { displayName: true, avatarUrl: true } } }
+      }
+    }
+  })
+
+□ Search for all remaining N+1 patterns:
+  grep -r "findUnique\|findFirst" server/src/ --include="*.ts" -A 2 | grep -B 1 "for\|forEach\|map"
+  Fix every instance found inside loops.
+
+── B.3 Redis Caching Layer ──
+
+Implement a caching service if not already done:
+
+// server/src/services/cache.service.ts
+
+const CACHE_TTL = {
+  PACK_LIST: 300,        // 5 minutes
+  PACK_DETAIL: 600,      // 10 minutes  
+  CATEGORY_LIST: 3600,   // 1 hour
+  FEATURED_PACKS: 900,   // 15 minutes
+  TRENDING: 300,         // 5 minutes
+  USER_PURCHASES: 60,    // 1 minute (more dynamic)
+}
+
+export class CacheService {
+  async get<T>(key: string): Promise<T | null>
+  async set(key: string, value: unknown, ttl: number): Promise<void>
+  async del(key: string): Promise<void>
+  async delPattern(pattern: string): Promise<void>
+  
+  // Cache-aside wrapper
+  async remember<T>(key: string, ttl: number, fn: () => Promise<T>): Promise<T> {
+    const cached = await this.get<T>(key)
+    if (cached !== null) return cached
+    const fresh = await fn()
+    await this.set(key, fresh, ttl)
+    return fresh
+  }
+}
+
+Apply caching to these endpoints:
+□ GET /api/packs → cache key: packs:list:{page}:{filters_hash}
+□ GET /api/packs/featured → cache key: packs:featured
+□ GET /api/packs/trending → cache key: packs:trending:{timeframe}
+□ GET /api/packs/:slug → cache key: packs:detail:{slug}
+□ GET /api/categories → cache key: categories:all
+
+Cache invalidation on mutations:
+□ When pack status → PUBLISHED: del packs:list:*, packs:featured (if featured)
+□ When pack updated: del packs:detail:{slug}
+□ When category updated: del categories:all
+□ Use delPattern for wildcard invalidation
+
+── B.4 Financial Calculation Safety ──
+
+□ Find every place money is calculated:
+  grep -r "price\|total\|amount\|cents\|cost" server/src/ --include="*.ts" | grep -v "//\|test"
+
+□ Verify ZERO floating point arithmetic on monetary values:
+  ❌ WRONG: const total = pack.price * 0.9  // floating point!
+  ✅ CORRECT: const total = Math.round(pack.priceCents * 90 / 100)
+
+□ Order total MUST be recalculated server-side:
+  Never trust client-supplied total. Always:
+  1. Fetch pack prices from DB
+  2. Apply coupon discount (integer math)
+  3. Calculate tax (integer math)
+  4. Sum to get total
+  5. Use this server-calculated total for Stripe
+
+□ Coupon discount calculation:
+  if (coupon.discountType === 'PERCENT') {
+    discount = Math.round(subtotal * coupon.discountValue / 100)
+  } else {
+    discount = Math.min(coupon.discountValue, subtotal)  // can't discount more than total
+  }
+  total = Math.max(0, subtotal - discount + tax)  // never negative
+
+═══════════════════════════════════════════════════════════════════
+REMAINING PHASE C — FRONTEND PERFORMANCE & BUGS
+═══════════════════════════════════════════════════════════════════
+
+── C.1 Code Splitting & Lazy Loading ──
+
+□ Implement lazy loading for ALL routes in client/src/App.tsx:
+
+  import { lazy, Suspense } from 'react'
+  import { PageSkeleton } from './components/PageSkeleton'
+  
+  // Public routes
+  const HomePage = lazy(() => import('./pages/HomePage'))
+  const ExplorePage = lazy(() => import('./pages/ExplorePage'))
+  const PackDetailPage = lazy(() => import('./pages/PackDetailPage'))
+  const SearchPage = lazy(() => import('./pages/SearchPage'))
+  
+  // Admin routes (heavy - recharts, etc.)
+  const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboardPage'))
+  const AnalyticsPage = lazy(() => import('./pages/admin/AnalyticsPage'))
+  
+  // Wrap router with Suspense:
+  <Suspense fallback={<PageSkeleton />}>
+    <Routes>...</Routes>
+  </Suspense>
+
+□ Run bundle analysis after implementing:
+  npx vite-bundle-visualizer
+  Target: No single chunk > 200KB. Split anything larger.
+
+□ Recharts must only load on admin routes — verify it's not in 
+  the main bundle. If it is, move to dynamic import:
+  const { LineChart } = await import('recharts')
+
+── C.2 React Query Configuration ──
+
+□ Set up global React Query config in main.tsx:
+
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 5 * 60 * 1000,      // 5 minutes
+        gcTime: 10 * 60 * 1000,         // 10 minutes  
+        retry: (failureCount, error) => {
+          // Don't retry auth errors or not-found
+          if (error?.status === 401 || error?.status === 404) return false
+          return failureCount < 2
+        },
+        refetchOnWindowFocus: false,    // prevent jarring refetches
+        refetchOnReconnect: true,
+      },
+      mutations: {
+        retry: 0,  // never retry mutations automatically
+      }
+    }
+  })
+
+□ Audit all useQuery hooks — find any with staleTime: 0 and 
+  update to appropriate values based on data volatility
+
+□ Add proper query key factory pattern:
+  
+  // client/src/api/queryKeys.ts
+  export const queryKeys = {
+    packs: {
+      all: ['packs'] as const,
+      lists: () => [...queryKeys.packs.all, 'list'] as const,
+      list: (filters: PackFilters) => [...queryKeys.packs.lists(), filters] as const,
+      detail: (slug: string) => [...queryKeys.packs.all, 'detail', slug] as const,
+      featured: () => [...queryKeys.packs.all, 'featured'] as const,
+    },
+    categories: {
+      all: ['categories'] as const,
+    },
+    user: {
+      purchases: (userId: string) => ['user', userId, 'purchases'] as const,
+      wishlist: (userId: string) => ['user', userId, 'wishlist'] as const,
+    }
+  }
+
+□ All mutations invalidate correct queries on success:
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.packs.lists() })
+  }
+
+── C.3 Memory Leaks — Fix All ──
+
+□ Find all useEffect hooks that need cleanup:
+  grep -r "useEffect" client/src/ --include="*.tsx" -A 10 | grep -B 5 "addEventListener\|setInterval\|setTimeout\|subscribe"
+  
+  Every one must have a return cleanup function:
+  useEffect(() => {
+    const handler = () => {...}
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)  // ← required
+  }, [])
+
+□ Socket.IO cleanup in admin components:
+  useEffect(() => {
+    socket.on('job:update', handleJobUpdate)
+    socket.on('order:new', handleNewOrder)
+    return () => {
+      socket.off('job:update', handleJobUpdate)
+      socket.off('order:new', handleNewOrder)
+    }
+  }, [])  // empty deps + named handlers (not inline arrow fns)
+
+□ Fix infinite re-render risks:
+  grep -r "useEffect" client/src/ --include="*.tsx" -A 3 | grep -B 2 "\[\]"
+  For each, verify dependency array is correct and complete
+  Use react-hooks/exhaustive-deps eslint rule to catch missing deps
+
+── C.4 Form Security & UX ──
+
+□ All forms use react-hook-form (find any not using it):
+  grep -r "useState.*value\|onChange.*setField" client/src/ --include="*.tsx"
+  Migrate any manual form state to react-hook-form + Zod resolver
+
+□ Double submission prevention on ALL forms:
+  const { formState: { isSubmitting } } = useForm()
+  <button disabled={isSubmitting} type="submit">
+    {isSubmitting ? <Spinner /> : 'Submit'}
+  </button>
+
+□ Form errors mapped from server response to specific fields:
+  // In mutation onError handler:
+  if (error.response?.data?.error?.fields) {
+    Object.entries(error.response.data.error.fields).forEach(([field, msg]) => {
+      form.setError(field as FieldPath<FormData>, { message: msg as string })
+    })
+  }
+
+□ Unsaved changes warning on admin pack editor and account settings:
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (form.formState.isDirty) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [form.formState.isDirty])
+
+── C.5 Accessibility Fixes ──
+
+□ Run automated a11y check:
+  npx axe-cli http://localhost:5173 --tags wcag2a,wcag2aa
+  Fix every error (not just warnings)
+
+□ All interactive elements have accessible names:
+  grep -r "<button" client/src/ --include="*.tsx" | grep -v "aria-label\|children"
+  Icon-only buttons need aria-label: <button aria-label="Close modal">
+
+□ All images have alt text:
+  grep -r "<img" client/src/ --include="*.tsx" | grep -v "alt="
+  Fix every img without alt attribute
+
+□ Form inputs all have associated labels:
+  grep -r "<input" client/src/ --include="*.tsx" | grep -v "aria-label\|id="
+  Every input needs: <label htmlFor="fieldId"> or aria-label
+
+□ Color contrast: text-secondary (#A0A0C0 on #0D0D1A) 
+  Verify contrast ratio ≥ 4.5:1 for normal text, ≥ 3:1 for large text
+  Use: https://webaim.org/resources/contrastchecker/
+
+□ Focus ring visible on ALL interactive elements:
+  Add to global CSS: 
+  :focus-visible {
+    outline: 2px solid #6C47FF;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+□ Keyboard navigation: Tab through homepage, login, pack detail
+  Every interactive element reachable. No focus traps (except modals).
+  Modal focus trap implemented with focus-trap-react or manual logic.
+
+□ Reduced motion: verify all Framer Motion animations check:
+  import { useReducedMotion } from 'framer-motion'
+  const shouldReduce = useReducedMotion()
+  // Pass to animate props conditionally
+
+── C.6 Mobile Responsiveness ──
+
+□ Open browser DevTools → test at these exact viewports:
+  375px (iPhone SE), 390px (iPhone 14), 768px (iPad), 1024px (iPad Pro)
+
+□ Fix any of these common mobile breakage points:
+  - Horizontal scroll on any page → check for overflow-x
+  - Text overflow / truncation issues
+  - Buttons too small (< 44px touch target)
+  - Modals not scrollable on small screens
+  - Admin tables: add horizontal scroll wrapper
+  - Sidebar: confirm collapses properly on mobile
+  - Pack card grid: confirm stacks to 1 column on 375px
+
+□ Touch targets: all buttons/links minimum 44x44px:
+  .btn { min-height: 44px; min-width: 44px; }
+
+═══════════════════════════════════════════════════════════════════
+REMAINING PHASE D — AUTOMATED TEST SUITE
+═══════════════════════════════════════════════════════════════════
+
+Set up Vitest for both client and server. Write ALL tests below.
+
+── D.1 Test Setup ──
+
+□ Install test dependencies:
+  npm install -D vitest @vitest/coverage-v8 supertest 
+              @testing-library/react @testing-library/user-event 
+              @testing-library/jest-dom jsdom msw
+
+□ Create vitest.config.ts in server/:
+  export default defineConfig({
+    test: {
+      environment: 'node',
+      globals: true,
+      setupFiles: ['./src/tests/setup.ts'],
+      coverage: {
+        provider: 'v8',
+        thresholds: { lines: 70, functions: 70, branches: 60 }
+      }
+    }
+  })
+
+□ Create vitest.config.ts in client/:
+  export default defineConfig({
+    test: {
+      environment: 'jsdom',
+      globals: true,
+      setupFiles: ['./src/tests/setup.ts'],
+    }
+  })
+
+□ Create test database setup (server/src/tests/setup.ts):
+  - Use separate TEST_DATABASE_URL
+  - Run migrations before tests
+  - Truncate all tables between tests (not drop/recreate — faster)
+  - Create fresh test fixtures per test suite
+
+── D.2 Backend Unit Tests ──
+
+Write server/src/tests/unit/auth.service.test.ts:
+
+describe('AuthService', () => {
+  describe('register', () => {
+    it('creates user with hashed password')
+    it('returns 409 for duplicate email')
+    it('rejects password shorter than 8 chars')
+    it('rejects password without special character')
+    it('sends verification email after registration')
+  })
+  
+  describe('login', () => {
+    it('returns token pair for valid credentials')
+    it('returns 401 for wrong password')
+    it('returns 401 for non-existent email (same error as wrong password)')
+    it('returns 401 for unverified email')
+    it('returns 403 for suspended account')
+    it('updates lastLoginAt on successful login')
+  })
+  
+  describe('refreshToken', () => {
+    it('returns new token pair for valid refresh token')
+    it('returns 401 for expired refresh token')
+    it('returns 401 for already-used refresh token (rotation)')
+    it('returns 401 for tampered token')
+  })
+  
+  describe('resetPassword', () => {
+    it('updates password for valid reset token')
+    it('returns 400 for expired reset token')
+    it('returns 400 for already-used reset token')
+    it('uses timing-safe comparison')
+  })
+})
+
+Write server/src/tests/unit/order.service.test.ts:
+
+describe('OrderService', () => {
+  describe('createOrder', () => {
+    it('creates completed order for valid purchase')
+    it('returns 404 for non-existent pack')
+    it('returns 409 if user already owns the pack')
+    it('creates order with server-calculated price (ignores client price)')
+  })
+  
+  describe('validateCoupon', () => {
+    it('returns discount for valid coupon')
+    it('returns 404 for non-existent coupon code')
+    it('returns 400 for expired coupon')
+    it('returns 400 when max uses exceeded')
+    it('returns 400 when order below minimum amount')
+    it('calculates percent discount correctly with integer math')
+    it('calculates fixed discount correctly')
+    it('discount cannot exceed order total')
+  })
+})
+
+Write server/src/tests/unit/automation.service.test.ts:
+
+describe('AutomationService', () => {
+  describe('generatePrompts', () => {
+    it('returns array of prompts from AI API')
+    it('returns mock data when API key not configured')
+    it('handles API timeout gracefully')
+    it('handles API rate limit with retry')
+    it('validates response schema before saving')
+  })
+})
+
+── D.3 Backend Integration Tests ──
+
+Write server/src/tests/integration/auth.test.ts:
+
+describe('Auth API', () => {
+  it('POST /api/auth/register → 201 with user data')
+  it('POST /api/auth/register → 409 for duplicate email')
+  it('POST /api/auth/login → 200 with tokens for valid credentials')
+  it('POST /api/auth/login → 401 for wrong password (no info leakage)')
+  it('POST /api/auth/refresh → 200 with new tokens')
+  it('POST /api/auth/logout → 204, refresh token revoked')
+  it('GET /api/auth/me → 200 with user (no passwordHash in response)')
+  it('GET /api/auth/me → 401 without token')
+  it('POST /api/auth/login → 429 after 10 attempts in 15 min')
+})
+
+Write server/src/tests/integration/security.test.ts:
+
+describe('Security', () => {
+  it('buyer token on GET /api/admin/dashboard → 403')
+  it('no token on GET /api/user/purchases → 401')
+  it('user A token on GET /api/orders/{user_B_order_id} → 403')
+  it('expired JWT on authenticated route → 401')
+  it('tampered JWT signature → 401')
+  it('GET /api/packs does not include deleted packs')
+  it('SQL injection in search query → safe empty result')
+  it('response never includes passwordHash field')
+  it('response never includes stripeCustomerId for non-admin')
+  it('download endpoint without purchase → 403')
+})
+
+Write server/src/tests/integration/packs.test.ts:
+
+describe('Packs API', () => {
+  it('GET /api/packs → only returns PUBLISHED packs')
+  it('GET /api/packs?category=coding → filters correctly')
+  it('GET /api/packs?minPrice=0&maxPrice=1000 → price filter works')
+  it('GET /api/packs/:slug → 200 with pack details')
+  it('GET /api/packs/:slug → 404 for non-existent slug')
+  it('GET /api/packs/:slug → prompts preview limited to 5 for unauthenticated')
+  it('GET /api/packs/featured → only featured=true packs')
+  it('GET /api/search?q=marketing → returns relevant results')
+})
+
+── D.4 Frontend Component Tests ──
+
+Write client/src/tests/components/PackCard.test.tsx:
+
+describe('PackCard', () => {
+  it('renders pack title, price, and category')
+  it('renders "Free" badge when isFree=true')
+  it('renders "Bestseller" badge when isBestseller=true')
+  it('calls onWishlistToggle when heart clicked')
+  it('shows filled heart when isSaved=true')
+  it('navigates to pack detail on card click')
+  it('renders skeleton when isLoading=true')
+})
+
+Write client/src/tests/pages/LoginPage.test.tsx:
+
+describe('LoginPage', () => {
+  it('renders email and password fields')
+  it('shows validation error for invalid email')
+  it('shows validation error for empty password')
+  it('disables submit button while submitting')
+  it('displays server error message on failed login')
+  it('redirects to dashboard on successful login')
+  it('redirects to returnUrl param after login')
+})
+
+Write client/src/tests/auth/ProtectedRoute.test.tsx:
+
+describe('ProtectedRoute', () => {
+  it('renders children when user is authenticated')
+  it('redirects to /login when unauthenticated')
+  it('preserves returnUrl in redirect')
+  it('redirects admin route to /login for buyer role')
+})
+
+── D.5 Run Tests & Verify Coverage ──
+
+□ npm run test (all tests pass)
+□ npm run test:coverage 
+  → lines ≥ 70%, functions ≥ 70%, branches ≥ 60%
+□ Fix any failing tests
+□ Add tests for any gap in coverage below threshold
+
+═══════════════════════════════════════════════════════════════════
+REMAINING PHASE E — LOGGING, MONITORING & OBSERVABILITY
+═══════════════════════════════════════════════════════════════════
+
+── E.1 Structured Logging with Pino ──
+
+□ Install: npm install pino pino-pretty
+□ Create server/src/utils/logger.ts:
+
+  import pino from 'pino'
+  
+  export const logger = pino({
+    level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
+    redact: {
+      paths: [
+        'req.headers.authorization',
+        'req.headers.cookie',
+        'body.password',
+        'body.newPassword',
+        'body.token',
+        'body.resetToken',
+        'body.stripeKey',
+      ],
+      censor: '[REDACTED]'
+    },
+    transport: process.env.NODE_ENV !== 'production' 
+      ? { target: 'pino-pretty', options: { colorize: true } } 
+      : undefined,
+    base: {
+      env: process.env.NODE_ENV,
+      version: process.env.npm_package_version,
+    }
+  })
+
+□ Replace ALL console.log/error/warn with logger calls:
+  grep -r "console\." server/src/ --include="*.ts" | grep -v "//\|test"
+  Replace each with appropriate logger.info/warn/error/debug call
+
+□ Add request logging middleware:
+  app.use((req, res, next) => {
+    const start = Date.now()
+    res.on('finish', () => {
+      logger.info({
+        method: req.method,
+        path: req.path,
+        statusCode: res.statusCode,
+        duration: Date.now() - start,
+        requestId: res.getHeader('X-Request-ID'),
+        userId: req.user?.id,
+        ip: req.ip,
+      })
+    })
+    next()
+  })
+
+□ Log these business events at info level:
+  - User registered: { userId, email (masked: first 3 chars + ***) }
+  - User logged in: { userId, ip }
+  - Order completed: { orderId, userId, totalCents }
+  - Pack published: { packId, title }
+  - Job completed: { jobId, type, duration, tokensUsed }
+  - Job failed: { jobId, type, error, retryCount }
+
+□ Log these security events at warn level:
+  - Failed login attempt: { email (masked), ip, attemptCount }
+  - Rate limit triggered: { path, ip }
+  - Invalid JWT: { ip, reason }
+  - Authorization denied: { userId, path, requiredRole }
+  - Webhook signature mismatch: { ip }
+
+── E.2 Sentry Error Monitoring ──
+
+□ Install: npm install @sentry/node @sentry/react @sentry/vite-plugin
+
+□ Server Sentry setup (initialize BEFORE routes):
+  import * as Sentry from '@sentry/node'
+  
+  if (process.env.SENTRY_DSN) {
+    Sentry.init({
+      dsn: process.env.SENTRY_DSN,
+      environment: process.env.NODE_ENV,
+      tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
+      beforeSend(event) {
+        // Scrub sensitive data before sending
+        if (event.request?.data) {
+          const data = event.request.data as Record<string, unknown>
+          if (data.password) data.password = '[REDACTED]'
+          if (data.token) data.token = '[REDACTED]'
+        }
+        return event
+      }
+    })
+  }
+  
+  // Add Sentry error handler AFTER all routes:
+  app.use(Sentry.Handlers.errorHandler())
+
+□ Client Sentry setup in main.tsx:
+  import * as Sentry from '@sentry/react'
+  
+  if (import.meta.env.VITE_SENTRY_DSN) {
+    Sentry.init({
+      dsn: import.meta.env.VITE_SENTRY_DSN,
+      environment: import.meta.env.MODE,
+      tracesSampleRate: 0.1,
+      // Only capture errors, not user info
+      beforeSend(event) {
+        delete event.user?.email
+        return event
+      }
+    })
+  }
+
+□ Wrap ErrorBoundary with Sentry:
+  export const AppErrorBoundary = Sentry.withErrorBoundary(ErrorBoundary, {
+    fallback: <ErrorFallback />
+  })
+
+── E.3 Health & Readiness Checks ──
+
+□ Enhance /api/healthz to include queue stats:
+
+  GET /api/healthz response:
+  {
+    "status": "ok",
+    "timestamp": "2026-03-13T10:00:00.000Z",
+    "version": "1.0.0",
+    "uptime": 3600,
+    "services": {
+      "database": { "status": "ok", "latencyMs": 12 },
+      "redis": { "status": "ok", "latencyMs": 1 },
+      "queue": { 
+        "status": "ok",
+        "pending": 3,
+        "active": 1,
+        "failed": 0
+      }
+    }
+  }
+  
+  Returns 200 if all services ok
+  Returns 503 if any service is down
+  Database check: SELECT 1 with 2000ms timeout
+  Redis check: PING with 500ms timeout
+
+□ GET /api/health/ready → 200 if ready to serve traffic, 503 if not
+□ GET /api/health/live → 200 always (process is alive)
+
+═══════════════════════════════════════════════════════════════════
+REMAINING PHASE F — PRODUCTION BUILD & DEPLOYMENT
+═══════════════════════════════════════════════════════════════════
+
+── F.1 Production Build Verification ──
+
+□ Run full production build and verify zero errors:
+  NODE_ENV=production npm run build
+  
+  Client build must produce:
+  - dist/index.html
+  - dist/assets/*.js (chunked, hashed filenames)
+  - dist/assets/*.css (minified)
+  
+  Server build must produce:
+  - dist/server/index.js (or equivalent)
+
+□ Verify client bundle sizes:
+  npx vite-bundle-visualizer
+  
+  Enforce these limits:
+  - index.[hash].js (framework chunk): < 50KB gzip
+  - vendor.[hash].js (shared deps): < 100KB gzip
+  - Any single route chunk: < 80KB gzip
+  - Total initial JS: < 200KB gzip
+  
+  If any chunk exceeds limit, find what's in it and split or lazy-load.
+
+□ Test production build locally:
+  npm run build
+  npm run start  (serves built client + API)
+  Open http://localhost:3000 — verify it loads
+  Open http://localhost:3000/admin — verify it loads
+  Run through: register → browse → purchase flow
+
+── F.2 Pre-Deploy Script ──
+
+□ Create scripts/pre-deploy-check.ts:
+
+  async function preDeployCheck() {
+    const errors: string[] = []
+    const warnings: string[] = []
+    
+    // Required env vars
+    const required = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET', 'NODE_ENV']
+    required.forEach(key => {
+      if (!process.env[key]) errors.push(`Missing required: ${key}`)
+    })
+    
+    // JWT secret strength
+    if ((process.env.JWT_SECRET?.length ?? 0) < 32) {
+      errors.push('JWT_SECRET must be at least 32 characters')
+    }
+    
+    // Production checks
+    if (process.env.NODE_ENV === 'production') {
+      if (!process.env.SENTRY_DSN) warnings.push('SENTRY_DSN not set — errors wont be tracked')
+      if (process.env.STRIPE_SECRET_KEY?.startsWith('sk_test_')) {
+        warnings.push('Using Stripe TEST key in production')
+      }
+      if (process.env.CORS_ORIGIN === '*') {
+        errors.push('CORS_ORIGIN cannot be wildcard in production')
+      }
+    }
+    
+    // Database connectivity
+    try {
+      await prisma.$queryRaw`SELECT 1`
+      console.log('✅ Database connection: OK')
+    } catch (e) {
+      errors.push(`Database connection failed: ${e.message}`)
+    }
+    
+    // Redis connectivity
+    try {
+      await redis.ping()
+      console.log('✅ Redis connection: OK')
+    } catch (e) {
+      warnings.push(`Redis connection failed: ${e.message}`)
+    }
+    
+    if (errors.length > 0) {
+      console.error('❌ Pre-deploy checks FAILED:')
+      errors.forEach(e => console.error(`  - ${e}`))
+      process.exit(1)
+    }
+    
+    if (warnings.length > 0) {
+      console.warn('⚠️  Warnings:')
+      warnings.forEach(w => console.warn(`  - ${w}`))
+    }
+    
+    console.log('✅ All pre-deploy checks passed')
+    process.exit(0)
+  }
+
+□ Add to package.json: "predeploy": "tsx scripts/pre-deploy-check.ts"
+
+── F.3 README.md — Complete It ──
+
+□ Write a complete README.md with these exact sections:
+
+  # PromptVault — AI Prompt Marketplace
+  
+  ## Overview
+  (2 paragraph description of what the platform does)
+  
+  ## Tech Stack
+  (table of all technologies)
+  
+  ## Prerequisites
+  - Node.js 20+
+  - PostgreSQL 15+
+  - Redis 7+
+  - (optional) Stripe account
+  - (optional) Anthropic API key
+  
+  ## Quick Start
+  1. Clone repo
+  2. cp .env.example .env
+  3. Fill in at minimum: DATABASE_URL, JWT_SECRET, JWT_REFRESH_SECRET
+  4. npm install
+  5. npm run db:migrate
+  6. npm run db:seed
+  7. npm run dev
+  8. Open http://localhost:5173
+  
+  ## Environment Variables
+  (table with every var: name, required?, default, description)
+  
+  ## Default Accounts (after seed)
+  - Admin: admin@promptvault.com / Admin123!
+  - Buyer: buyer@promptvault.com / Buyer123!
+  
+  ## Development
+  - npm run dev — start both client and server with hot reload
+  - npm run test — run test suite
+  - npm run test:coverage — coverage report
+  - npm run db:studio — open Prisma Studio
+  
+  ## Architecture
+  (diagram or description of client → API → DB → Queue flow)
+  
+  ## Deployment
+  (step by step for deploying to Replit / Railway / Render)
+  
+  ## API Documentation
+  (link to /api-docs if Swagger is set up, else brief endpoint list)
+
+═══════════════════════════════════════════════════════════════════
+FINAL VERIFICATION SEQUENCE
+═══════════════════════════════════════════════════════════════════
+
+Run every command below in sequence. All must pass. 
+Fix any failure before moving to the next.
+
+□ npm audit --audit-level=moderate
+  → Expected: 0 vulnerabilities
+
+□ npx tsc --noEmit (in /client and /server)
+  → Expected: no errors output
+
+□ npx eslint . --ext .ts,.tsx --max-warnings 0
+  → Expected: no output (zero warnings)
+
+□ npm run test
+  → Expected: all tests green
+
+□ npm run test:coverage
+  → Expected: lines ≥ 70%, functions ≥ 70%
+
+□ NODE_ENV=production npm run build
+  → Expected: builds with no errors
+
+□ npm run start (production build)
+  curl http://localhost:3000/api/healthz
+  → Expected: { "status": "ok" }
+
+□ Security smoke tests (run with curl):
+  # Test 1: No token on protected route
+  curl -s http://localhost:3000/api/user/purchases
+  → Expected: { "success": false, "error": { "code": "UNAUTHORIZED" } }
+  
+  # Test 2: Buyer on admin route
+  TOKEN=$(curl -s -X POST http://localhost:3000/api/auth/login \
+    -H "Content-Type: application/json" \
+    -d '{"email":"buyer@test.com","password":"Buyer123!"}' | jq -r '.data.accessToken')
+  curl -s -H "Authorization: Bearer $TOKEN" http://localhost:3000/api/admin/dashboard
+  → Expected: { "success": false, "error": { "code": "FORBIDDEN" } }
+  
+  # Test 3: SQL injection in search
+  curl -s "http://localhost:3000/api/search?q='; DROP TABLE users; --"
+  → Expected: empty results (not 500)
+  
+  # Test 4: Tampered JWT
+  curl -s -H "Authorization: Bearer invalid.token.here" http://localhost:3000/api/auth/me
+  → Expected: 401
+
+□ Lighthouse audit:
+  npx lighthouse http://localhost:3000 --output=json --quiet | jq '.categories | {performance: .performance.score, accessibility: .accessibility.score, "best-practices": .["best-practices"].score, seo: .seo.score}'
+  → Expected: all scores ≥ 0.90
+
+═══════════════════════════════════════════════════════════════════
+COMPLETION REPORT
+═══════════════════════════════════════════════════════════════════
+
+When all phases are complete, generate a final report with:
+
+1. SECURITY REPORT
+   - All vulnerabilities found and fixed (list each)
+   - Security headers implemented (list each)
+   - Auth improvements made
+   - Input validation coverage: X% of endpoints
+   
+2. PERFORMANCE REPORT
+   - Lighthouse scores: Performance / Accessibility / Best Practices / SEO
+   - Initial bundle size (gzipped)
+   - API response times (P50/P95 from health check)
+   - N+1 queries fixed (list)
+   - Cache hit rate (from Redis)
+   
+3. TEST COVERAGE REPORT
+   - Total tests written
+   - Coverage: lines / functions / branches
+   - Test suites: unit / integration / component / security
+   
+4. REMAINING RISKS (if any)
+   - Any known issues not yet fixed
+   - Technical debt items for future sprints
+   - Items requiring external service setup
+
+Do not mark complete until all items in all 6 phases 
+(A through F) are fully implemented and all verification 
+commands pass.
+```
+
+---
+
+**Pro tips for this prompt:**
+
+- If Replit stalls on Phase D (tests), say: *"Skip to Phase E, then come back and finish Phase D"*
+- After it finishes, run the 4 `curl` security smoke tests yourself in the Replit Shell to independently verify
+- The Lighthouse command requires the server to be running — start it first with `npm run start` before running the audit

@@ -1,0 +1,347 @@
+
+
+
+
+PROMPTVAULT
+AI Prompt Marketplace Platform
+Product Requirements Document (PRD)
+Version 1.0  -  Production Ready
+????????????????????????????????????????
+Document TypeAudienceStatusDateFull-Stack PRDEngineering + Design + ProductFinal / Production-ReadyMarch 2026
+
+Table of Contents
+#SectionPage1Executive Summary42Product Vision & Goals53System Architecture Overview64Database Schema (Phase 1)85Backend API Design (Phase 2)186Automation Engine247UI/UX Design System288All Platform Screens339Error States & Empty States5210Animation & Micro-Interaction Spec5611Security & Access Control5912Performance & Scalability6113File Generation Pipeline6314Analytics & Reporting6515Deployment & Infrastructure6716Acceptance Criteria & QA69
+
+1. Executive Summary
+PromptVault is an industry-grade, fully automated AI Prompt Marketplace platform designed to generate, organize, package, and sell high-quality AI prompt engineering packs across multiple categories and AI tool ecosystems. The platform removes nearly all manual content-creation work by using AI pipelines to produce prompts, metadata, preview images, PDF packs, ZIP bundles, and marketplace listings automatically.
+A human administrator reviews and approves generated content before it is published, ensuring quality without requiring manual authorship. The marketplace serves buyers who want curated, professional prompt collections, and provides sellers (initially the platform itself) with an automated revenue engine.
+Problem Statement
+AI practitioners, marketers, developers, and creators waste significant time engineering prompts for tools like ChatGPT, Midjourney, Claude, and others. There is no premium, systematically curated marketplace that offers deeply organized, high-quality prompt packs at scale.
+Solution
+PromptVault solves this with a fully automated backend that generates thousands of prompts per day, packages them into structured packs, and lists them in a polished storefront - requiring only final human approval before going live.
+Key Metrics Targets
+MetricTarget (6 Months)Target (12 Months)Prompt Packs Published500+2,000+Monthly Active Users10,000+50,000+Monthly Revenue (GMV)$15,000+$80,000+Automation Rate95%+98%+Avg Pack Rating4.5 / 5.04.7 / 5.0Page Load Time (P95)< 1.5 seconds< 1.0 second
+
+2. Product Vision & Goals
+2.1 Vision Statement
+To become the world's leading automated AI prompt marketplace - a platform where every prompt pack is generated, refined, and delivered at machine speed with human-level quality control.
+2.2 Core Design Principles
+• Automation First - every repeatable task should be automated by default.
+• Human in the Loop - a lightweight approval workflow ensures quality without slowing velocity.
+• Buyer Delight - the storefront must feel premium, fast, and trustworthy.
+• Scalability - the architecture must handle 10x growth without re-engineering.
+• Modularity - every subsystem (generation, packaging, payments, analytics) is independently replaceable.
+2.3 User Personas
+Persona A - The AI Power User (Buyer)
+Age 25-40, works in marketing, design, or software development. Uses ChatGPT / Claude / Midjourney daily. Wants pre-built prompt libraries to save time. Willing to pay $5-$49 per pack.
+Persona B - The Platform Administrator (You)
+Manages the automation pipeline, reviews AI-generated content, approves listings, monitors revenue, and adjusts pricing. Needs a powerful, information-dense admin panel with full system observability.
+Persona C - The Curious Browser
+First-time visitor who found PromptVault via SEO or social. Needs a compelling homepage, free previews, and a frictionless purchase flow to convert.
+2.4 Success Criteria
+1. A new prompt pack can go from "AI generation requested" to "live on marketplace" in under 30 minutes of total human attention.
+2. The platform can generate and manage at least 10,000 prompts across 500 packs without performance degradation.
+3. Payment, download, and email delivery work correctly end-to-end with zero manual intervention.
+4. Admin dashboard surfaces all key operational metrics on a single screen.
+
+
+3. System Architecture Overview
+3.1 High-Level Architecture
+PromptVault uses a three-tier architecture: a React/Vite SPA frontend, a Node.js REST + WebSocket backend, and a PostgreSQL primary database supported by Redis for caching and job queuing.
+LayerTechnologyResponsibilityFrontendReact 18, TypeScript, Vite 5SPA storefront, admin panel, user dashboardAPI GatewayNode.js (Express / Fastify), TypeScriptREST API, WebSocket events, auth middlewareAutomation EngineNode.js worker processes, BullMQAI generation jobs, PDF/ZIP tasks, listing creationAI IntegrationAnthropic Claude API (primary), OpenAI (fallback)Prompt generation, metadata, descriptionsImage GenerationDALL-E 3 / Stable Diffusion APIPack preview images, thumbnailsPrimary DatabasePostgreSQL 16All relational data, JSONB for flexible fieldsCache / QueueRedis 7Session cache, job queues (BullMQ), rate limitingFile StorageAWS S3 (or compatible)PDFs, ZIPs, images, user downloadsEmailResend / SendGridPurchase confirmation, download linksPaymentsStripe (primary), LemonSqueezy (alt)Checkout, subscriptions, refundsSearchMeilisearch (self-hosted)Full-text prompt and pack searchCDNCloudflareStatic assets, edge caching, DDoS protectionMonitoringOpenTelemetry + Grafana / DatadogMetrics, traces, error alerting3.2 Development Phases
+Phase 1 - Database Architecture
+Design and migrate the full PostgreSQL schema including all tables, indexes, constraints, enums, and triggers. This phase produces a versioned migration system (using node-postgres migrate or Prisma migrations) with rollback support.
+Phase 2 - Backend Development
+Build all API endpoints, authentication (JWT + refresh tokens), automation pipelines, file generation services, payment integration, and the moderation queue system. Every automation job runs through BullMQ with retry logic and dead-letter handling.
+Phase 3 - Frontend Development
+Build the React/TypeScript/Vite frontend consuming the API. This phase covers all public screens, authenticated user flows, and the full admin dashboard with real-time updates via WebSocket.
+3.3 API Design Philosophy
+• All API routes follow REST conventions: GET for reads, POST for creates, PATCH for partial updates, DELETE for removals.
+• Every response envelope uses a consistent shape: { success, data, meta, error }.
+• Pagination uses cursor-based pagination for all list endpoints to support infinite scroll.
+• Rate limiting is enforced at the API gateway: 60 req/min for public, 300 req/min for authenticated users, 1000 req/min for admin.
+• All mutation endpoints are idempotent where possible using client-supplied idempotency keys.
+
+
+4. Database Schema - Phase 1
+4.1 Entity Relationship Overview
+The schema is organized into six logical domains: Identity & Auth, Marketplace Catalog, Commerce, Automation & Jobs, Content Assets, and Analytics. All tables use UUID primary keys. Timestamps follow timestamptz (UTC). Soft deletes are implemented via deleted_at columns on mutable tables.
+4.2 Enums
+Enum NameValuesuser_rolebuyer, admin, super_adminuser_statusactive, suspended, pending_verification, deletedpack_statusdraft, ai_generated, pending_review, approved, rejected, published, archivedprompt_statusdraft, generated, approved, rejected, archivedorder_statuspending, completed, failed, refunded, disputedpayment_statuspending, captured, failed, refunded, disputedfile_typepdf, zip, thumbnail, preview_imagefile_statusqueued, generating, ready, failedjob_typegenerate_prompts, generate_pack, generate_pdf, generate_zip, generate_image, create_listing, send_emailjob_statuspending, running, completed, failed, retrying, deadmoderation_actionapprove, reject, flag, edit_and_approvepricing_tierfree, starter, pro, enterprise4.3 Table: users
+ColumnTypeConstraintsDescriptionidUUIDPK, DEFAULT gen_random_uuid()Primary keyemailVARCHAR(255)UNIQUE, NOT NULLLogin emailemail_verified_atTIMESTAMPTZNULLEmail verification timestamppassword_hashVARCHAR(255)NULLbcrypt hash, null for OAuth usersroleuser_roleNOT NULL, DEFAULT buyerAccess rolestatususer_statusNOT NULL, DEFAULT activeAccount statusdisplay_nameVARCHAR(100)NULLPublic display nameavatar_urlVARCHAR(500)NULLProfile picture URLbioTEXTNULLOptional profile biostripe_customer_idVARCHAR(100)UNIQUE, NULLStripe customer referencepreferencesJSONBDEFAULT {}UI prefs, notification settingslast_login_atTIMESTAMPTZNULLLast successful logincreated_atTIMESTAMPTZNOT NULL, DEFAULT now()Account creationupdated_atTIMESTAMPTZNOT NULL, DEFAULT now()Last updatedeleted_atTIMESTAMPTZNULLSoft delete timestamp4.4 Table: categories
+ColumnTypeConstraintsDescriptionidUUIDPKPrimary keyslugVARCHAR(100)UNIQUE, NOT NULLURL-safe identifiernameVARCHAR(150)NOT NULLDisplay namedescriptionTEXTNULLCategory descriptioniconVARCHAR(100)NULLIcon identifier or emojicolorVARCHAR(7)NULLHex color for UIparent_idUUIDFK -> categories, NULLFor nested subcategoriessort_orderINTDEFAULT 0Display orderingis_featuredBOOLEANDEFAULT falseShow in homepage feature sectionpack_countINTDEFAULT 0Denormalized count for fast displaycreated_atTIMESTAMPTZNOT NULL, DEFAULT now()4.5 Table: prompt_packs
+ColumnTypeConstraintsDescriptionidUUIDPKPrimary keytitleVARCHAR(200)NOT NULLPack display titleslugVARCHAR(220)UNIQUE, NOT NULLURL slugdescriptionTEXTNOT NULLFull descriptionshort_descriptionVARCHAR(300)NULLCard summary (AI-generated)category_idUUIDFK -> categories, NOT NULLPrimary categorystatuspack_statusNOT NULL, DEFAULT draftLifecycle statusai_tool_targetsTEXT[]DEFAULT {}e.g. ["chatgpt","claude","midjourney"]prompt_countINTDEFAULT 0Number of prompts in packprice_centsINTNOT NULL, DEFAULT 0Price in cents USDcompare_price_centsINTNULLStrike-through comparison priceis_freeBOOLEANDEFAULT falseFree pack flagis_featuredBOOLEANDEFAULT falseFeatured on homepageis_bestsellerBOOLEANDEFAULT falseBestseller badgethumbnail_urlVARCHAR(500)NULLAI-generated pack thumbnailpreview_image_urlVARCHAR(500)NULLLarger hero imagetagsTEXT[]DEFAULT {}Searchable tagsseo_titleVARCHAR(70)NULLSEO page titleseo_descriptionVARCHAR(160)NULLSEO meta descriptiontotal_downloadsINTDEFAULT 0All-time download counttotal_revenue_centsINTDEFAULT 0Denormalized revenueavg_ratingDECIMAL(3,2)DEFAULT 0.00Calculated average ratingreview_countINTDEFAULT 0Review countversionINTDEFAULT 1Content version for change trackingai_generation_idUUIDFK -> automation_jobs, NULLSource job referencemoderated_byUUIDFK -> users, NULLAdmin who approved/rejectedmoderated_atTIMESTAMPTZNULLModeration timestamppublished_atTIMESTAMPTZNULLGo-live timestampcreated_atTIMESTAMPTZNOT NULL, DEFAULT now()updated_atTIMESTAMPTZNOT NULL, DEFAULT now()deleted_atTIMESTAMPTZNULLSoft delete4.6 Table: prompts
+ColumnTypeConstraintsDescriptionidUUIDPKPrimary keypack_idUUIDFK -> prompt_packs, NOT NULLParent packtitleVARCHAR(200)NOT NULLPrompt titlebodyTEXTNOT NULLThe actual prompt textdescriptionTEXTNULLUsage guidanceai_toolVARCHAR(50)NULLTarget AI (chatgpt, claude, etc.)statusprompt_statusNOT NULL, DEFAULT generatedLifecycle statususe_caseVARCHAR(100)NULLSpecific use-case labelvariablesJSONBDEFAULT []Template variables like {topic}example_outputTEXTNULLAI-generated example outputsort_orderINTDEFAULT 0Order within packversionINTDEFAULT 1Prompt versioncreated_atTIMESTAMPTZNOT NULL, DEFAULT now()updated_atTIMESTAMPTZNOT NULL, DEFAULT now()4.7 Table: prompt_versions
+Stores full history of prompt edits for auditability and rollback. Every PATCH to a prompt copies the current body into this table before updating.
+ColumnTypeDescriptionidUUID PKVersion record IDprompt_idUUID FKParent promptversionINTVersion numberbodyTEXTPrompt text at this versionchanged_byUUID FK -> usersEditor identitychange_reasonTEXTOptional change notecreated_atTIMESTAMPTZWhen this version was saved4.8 Table: generated_files
+ColumnTypeConstraintsDescriptionidUUIDPKpack_idUUIDFK -> prompt_packs, NOT NULLAssociated packfile_typefile_typeNOT NULLpdf | zip | thumbnail | preview_imagestatusfile_statusNOT NULL, DEFAULT queuedGeneration lifecyclestorage_keyVARCHAR(500)NULLS3 object keypublic_urlVARCHAR(500)NULLCDN-accessible URLfile_size_bytesBIGINTNULLFile size for displaychecksum_sha256VARCHAR(64)NULLIntegrity checkgeneration_started_atTIMESTAMPTZNULLgeneration_completed_atTIMESTAMPTZNULLerror_messageTEXTNULLFailure details if status=failedcreated_atTIMESTAMPTZNOT NULL, DEFAULT now()4.9 Table: orders
+ColumnTypeConstraintsDescriptionidUUIDPKOrder ID (shown to buyers)user_idUUIDFK -> users, NOT NULLBuyerstatusorder_statusNOT NULL, DEFAULT pendingOrder lifecyclesubtotal_centsINTNOT NULLBefore tax/discountdiscount_centsINTDEFAULT 0Coupon savingstax_centsINTDEFAULT 0Calculated taxtotal_centsINTNOT NULLFinal charged amountcurrencyVARCHAR(3)DEFAULT USDISO currency codestripe_payment_intent_idVARCHAR(100)NULLStripe referencestripe_session_idVARCHAR(100)NULLCheckout sessionrefunded_atTIMESTAMPTZNULLRefund timestamprefund_reasonTEXTNULLcompleted_atTIMESTAMPTZNULLWhen payment capturedip_addressINETNULLFor fraud detectionuser_agentTEXTNULLFor fraud detectioncreated_atTIMESTAMPTZNOT NULL, DEFAULT now()updated_atTIMESTAMPTZNOT NULL, DEFAULT now()4.10 Table: order_items
+ColumnTypeDescriptionidUUID PKorder_idUUID FKParent orderpack_idUUID FKPurchased packprice_centsINTPrice at time of purchase (snapshot)titleVARCHAR(200)Pack title snapshotdownload_countINT DEFAULT 0Times buyer has downloadedfirst_downloaded_atTIMESTAMPTZFirst download timestamp4.11 Table: automation_jobs
+ColumnTypeDescriptionidUUID PKJob record IDjob_typejob_typeType of automation taskstatusjob_statusCurrent execution statepriorityINT DEFAULT 5Queue priority (1=highest, 10=lowest)payloadJSONBInput parameters for the jobresultJSONBOutput/result dataerror_messageTEXTError detail if failedretry_countINT DEFAULT 0Number of retries attemptedmax_retriesINT DEFAULT 3Max allowed retriesrelated_pack_idUUID FK NULLAssociated pack if applicabletriggered_byUUID FK -> users NULLUser who triggered, or NULL for scheduledbull_job_idVARCHAR(100)BullMQ job ID for correlationstarted_atTIMESTAMPTZExecution start timecompleted_atTIMESTAMPTZExecution end timeduration_msINTCalculated processing timeai_tokens_usedINTLLM tokens consumedai_cost_usd_centsINTAI API cost for this jobcreated_atTIMESTAMPTZNOT NULL, DEFAULT now()4.12 Table: reviews
+ColumnTypeDescriptionidUUID PKpack_idUUID FKReviewed packuser_idUUID FKReviewer (must have purchased pack)order_idUUID FKPurchase that enables the reviewratingSMALLINTCHECK (rating BETWEEN 1 AND 5)titleVARCHAR(150)Review headlinebodyTEXTReview contentis_verifiedBOOLEAN DEFAULT trueVerified purchase flagis_flaggedBOOLEAN DEFAULT falseFlagged for moderationhelpful_countINT DEFAULT 0Number of helpful votescreated_atTIMESTAMPTZupdated_atTIMESTAMPTZ4.13 Table: tags
+ColumnTypeDescriptionidUUID PKnameVARCHAR(80) UNIQUETag labelslugVARCHAR(80) UNIQUEURL-safe slugusage_countINT DEFAULT 0Denormalized for search suggestions4.14 Table: pack_tags (Junction)
+ColumnTypeDescriptionpack_idUUID FK PKComposite PKtag_idUUID FK PKComposite PKcreated_atTIMESTAMPTZ4.15 Table: coupons
+ColumnTypeDescriptionidUUID PKcodeVARCHAR(50) UNIQUECoupon code (case-insensitive)discount_typeVARCHAR(20)percent | fixed_centsdiscount_valueINTPercentage (0-100) or centsmin_order_centsINT DEFAULT 0Minimum order to applymax_usesINT NULLNULL = unlimiteduses_countINT DEFAULT 0Atomic countervalid_fromTIMESTAMPTZvalid_untilTIMESTAMPTZ NULLNULL = no expiryis_activeBOOLEAN DEFAULT truecreated_atTIMESTAMPTZ4.16 Table: analytics_events
+Append-only event log. Never updated - only inserted. Used for purchase funnels, page views, and pack performance analytics.
+ColumnTypeDescriptionidUUID PKevent_typeVARCHAR(80)page_view, pack_view, add_to_cart, purchase, download, searchuser_idUUID NULLNULL for anonymoussession_idVARCHAR(100)Browser session identifierpack_idUUID NULLAssociated pack if applicablepropertiesJSONB DEFAULT {}Event-specific data (search query, referrer, etc.)ip_addressINETuser_agentTEXTcreated_atTIMESTAMPTZ NOT NULLPartition key (partition by month)4.17 Table: moderation_log
+ColumnTypeDescriptionidUUID PKentity_typeVARCHAR(50)prompt_pack | prompt | reviewentity_idUUIDThe entity being moderatedactionmoderation_actionWhat the admin didadmin_idUUID FK -> usersWho performed the actionnotesTEXTAdmin notes or rejection reasonbefore_statusVARCHAR(50)Status before actionafter_statusVARCHAR(50)Status after actioncreated_atTIMESTAMPTZ4.18 Table: email_queue
+ColumnTypeDescriptionidUUID PKto_emailVARCHAR(255)Recipienttemplate_idVARCHAR(100)Email template identifierpayloadJSONBTemplate variable datastatusVARCHAR(20) DEFAULT pendingpending | sent | failedsent_atTIMESTAMPTZ NULLerror_messageTEXT NULLretry_countINT DEFAULT 0created_atTIMESTAMPTZ4.19 Key Indexes
+TableIndexTypePurposeprompt_packsidx_packs_status_publishedBTREEFast marketplace queries by statusprompt_packsidx_packs_category_idBTREECategory browseprompt_packsidx_packs_slugBTREE UNIQUEURL routingprompt_packsidx_packs_tagsGINTag array searchprompt_packsidx_packs_ai_tool_targetsGINAI tool filterpromptsidx_prompts_pack_idBTREEPack detail queryordersidx_orders_user_idBTREEUser purchase historyordersidx_orders_statusBTREEAdmin order managementanalytics_eventsidx_events_created_atBTREETime-range queriesanalytics_eventsidx_events_pack_idBTREEPer-pack analyticsautomation_jobsidx_jobs_status_typeBTREEQueue monitoring
+
+5. Backend API Design - Phase 2
+5.1 API Response Envelope
+Every API response - success or failure - uses the same top-level shape. This allows frontend code to handle responses uniformly.
+FieldTypeDescriptionsuccessbooleantrue for 2xx responses, false for errorsdataobject | array | nullResponse payloadmetaobject | nullPagination cursors, counts, totalserrorobject | nullError code, message, field-level validation errors5.2 Authentication Endpoints
+MethodPathAuthDescriptionPOST/api/auth/registerPublicCreate account with email/passwordPOST/api/auth/loginPublicEmail/password login, returns JWT pairPOST/api/auth/refreshRefresh tokenRotate access token using refresh tokenPOST/api/auth/logoutAccess tokenRevoke refresh tokenPOST/api/auth/forgot-passwordPublicSend password reset emailPOST/api/auth/reset-passwordReset tokenComplete password resetPOST/api/auth/verify-emailVerify tokenConfirm email addressGET/api/auth/meAccess tokenGet current user profile5.3 Marketplace Endpoints
+MethodPathAuthDescriptionGET/api/packsPublicList published packs (paginated, filterable)GET/api/packs/featuredPublicHomepage featured packsGET/api/packs/trendingPublicTrending packs by recent downloadsGET/api/packs/bestsellersPublicAll-time bestseller listGET/api/packs/:slugPublicFull pack detail with prompts previewGET/api/packs/:slug/promptsPublicPaginated prompt list (limited for free)GET/api/categoriesPublicAll active categories with countsGET/api/categories/:slug/packsPublicPacks in a categoryGET/api/searchPublicFull-text search across packs and promptsGET/api/tags/popularPublicMost-used tags for browse filters5.4 User Endpoints
+MethodPathAuthDescriptionGET/api/user/purchasesUserList all purchased packsGET/api/user/purchases/:packId/downloadUserGenerate signed download URLGET/api/user/savedUserSaved / wishlisted packsPOST/api/user/saved/:packIdUserSave a pack to wishlistDELETE/api/user/saved/:packIdUserRemove from wishlistPATCH/api/user/profileUserUpdate display name, avatar, bioPATCH/api/user/passwordUserChange password (requires current)DELETE/api/user/accountUserRequest account deletionPOST/api/reviewsUser (buyer)Submit review for purchased packPATCH/api/reviews/:idUser (author)Edit own reviewDELETE/api/reviews/:idUser (author)Delete own review5.5 Commerce Endpoints
+MethodPathAuthDescriptionPOST/api/checkout/sessionUserCreate Stripe checkout sessionPOST/api/checkout/freeUserClaim a free pack (creates order)POST/api/webhooks/stripeStripe sigHandle payment eventsGET/api/ordersUserList own ordersGET/api/orders/:idUserSingle order detailPOST/api/coupons/validateUserCheck coupon validity and discount5.6 Admin Endpoints
+MethodPathDescriptionGET/api/admin/dashboardAggregate KPI snapshot (revenue, orders, jobs)GET/api/admin/packsAll packs with any status, filterablePOST/api/admin/packsManually create a pack recordPATCH/api/admin/packs/:idUpdate pack metadata, status, pricingDELETE/api/admin/packs/:idSoft delete a packGET/api/admin/packs/:id/promptsAll prompts for a pack (admin view)PATCH/api/admin/prompts/:idEdit a single promptPOST/api/admin/moderation/approve/:packIdApprove pack for publishingPOST/api/admin/moderation/reject/:packIdReject with reasonGET/api/admin/moderation/queuePacks awaiting reviewGET/api/admin/automation/jobsList all jobs with statusPOST/api/admin/automation/triggerManually trigger a generation jobPOST/api/admin/automation/jobs/:id/retryRetry a failed jobGET/api/admin/analytics/overviewRevenue, traffic, conversion analyticsGET/api/admin/analytics/packs/:idPer-pack analytics breakdownGET/api/admin/usersUser management listPATCH/api/admin/users/:id/statusSuspend / restore a userGET/api/admin/filesFile generation monitorPOST/api/admin/files/regenerate/:packIdTrigger re-generation of pack filesGET/api/admin/categoriesManage categories (CRUD)POST/api/admin/categoriesCreate categoryPATCH/api/admin/categories/:idUpdate categoryDELETE/api/admin/categories/:idArchive categoryGET/api/admin/couponsList all couponsPOST/api/admin/couponsCreate couponPATCH/api/admin/coupons/:idUpdate coupon5.7 WebSocket Events
+A WebSocket connection (Socket.IO) is maintained for admin dashboard and user download progress. Events are namespaced by role.
+EventNamespacePayloadDescriptionjob:update/admin{ jobId, status, progress }Real-time job progressjob:completed/admin{ jobId, result }Job success notificationjob:failed/admin{ jobId, error }Job failure alertpack:approved/admin{ packId }Pack moderation resultfile:ready/admin{ packId, fileType, url }File generation completeorder:new/admin{ orderId, total }New purchase notificationdownload:progress/user{ downloadId, percent }Download progress for buyer
+
+6. Automation Engine
+6.1 Architecture
+The automation engine is a collection of BullMQ worker processes that run alongside the main API server. Each worker type handles a specific job category. Workers are horizontally scalable - simply adding more Node.js worker processes increases throughput. All jobs are persisted in Redis and their state is mirrored to the automation_jobs table in PostgreSQL for audit purposes.
+6.2 Job Types & Pipelines
+Pipeline A - Full Pack Generation (Chained)
+5. trigger_pack_generation job is enqueued (manually or by scheduler)
+6. generate_prompts worker: calls Claude API with category + pack type parameters, writes N prompts to prompts table
+7. generate_metadata worker: generates title, description, short_description, seo_title, seo_description, tags via Claude
+8. generate_image worker: calls DALL-E 3 with pack context, uploads result to S3, updates thumbnail_url
+9. generate_pdf worker: compiles prompts into a formatted PDF using Puppeteer + HTML template, uploads to S3
+10. generate_zip worker: bundles PDF + text file + readme into ZIP, uploads to S3
+11. create_listing worker: sets pack status to ai_generated, sends notification to admin review queue
+Pipeline B - Scheduled Auto-Generation
+A cron job runs every 4 hours and checks category quotas. If any category has fewer than the target number of published packs, a new generation job is automatically triggered for that category. The schedule and quotas are configurable from the Admin Pricing Controls panel.
+6.3 Prompt Generation Prompts (System Instructions)
+?  These are the master system prompts used when calling the AI API to generate prompts. Each is category-specific.
+CategoryPack SizeAI Tool TargetsSample Output TitleMarketing100 promptsChatGPT, Claude"100 AI Marketing Prompts for Growth Hackers"Coding200 promptsChatGPT, Claude, Cursor"200 Expert Coding Prompts for Full-Stack Devs"Writing150 promptsChatGPT, Claude, Gemini"150 Creative Writing Prompts for Fiction Authors"Image Generation250 promptsMidjourney, DALL-E, Stable Diffusion"Midjourney Prompt Master Pack: 250 Cinematic Prompts"Business100 promptsChatGPT, Claude"100 Business Strategy Prompts for Founders"Productivity120 promptsChatGPT, Claude, Notion AI"120 AI Prompts to 10x Your Productivity"Design150 promptsMidjourney, Adobe Firefly"150 UI/UX Design Prompts for Designers"AI Agents80 promptsAutoGPT, LangChain, Claude"80 AI Agent Orchestration Prompts"Video Generation100 promptsSora, Runway, Pika"100 AI Video Prompts for Cinematic Content"Education120 promptsChatGPT, Claude, Perplexity"120 AI Learning Prompts for Students & Teachers"6.4 PDF Generation Specification
+• Engine: Puppeteer (headless Chrome) renders an HTML template to PDF.
+• Each PDF includes: cover page with pack branding, table of contents, prompt pages with numbered entries, usage guide, and back page with marketplace URL.
+• Fonts: Inter for body text, Fira Code for prompt text blocks (monospace styling).
+• Colors: Match the pack's category color palette (stored in categories.color).
+• Page size: US Letter (8.5" x 11"). Margins: 0.75" all sides.
+• File size target: under 5MB for a 100-prompt pack.
+6.5 Error Handling & Retries
+ScenarioBehaviorMax RetriesAI API rate limit (429)Exponential backoff: 1s, 2s, 4s, 8s5AI API timeout (>30s)Immediate retry with fresh request3AI API content refusalLog, flag job, alert admin, do not retry0S3 upload failureRetry after 5 seconds3PDF render crashRestart Puppeteer process, retry2Database write failureRetry with transaction rollback3Job exceeds 10 minutesMark as dead, alert admin0
+
+7. UI/UX Design System
+7.1 Design Philosophy
+PromptVault's visual identity is built on the "Dark Premium SaaS" archetype - the same family as Linear, Vercel, and Raycast. Every design decision prioritizes clarity, speed, and a sense of technological authority. The platform must feel like it was built by people who care deeply about craft.
+7.2 Color System
+TokenHexUsage--color-primary#6C47FFPrimary buttons, links, focus rings, key accents--color-primary-light#8B6FFFHover state of primary--color-secondary#00D4FFSecondary accents, badges, highlights--color-accent#FF6B6BCoral for warnings, bestseller badges, urgency--color-success#22C55EConfirmation states, verified badges--color-warning#F59E0BCaution states, review pending--color-error#EF4444Destructive actions, error messages--color-info#3B82F6Informational notices--bg-base#0D0D1AMain page background--bg-surface#1A1A2ECard backgrounds, panels--bg-elevated#252540Modals, dropdowns, popovers--bg-overlayrgba(13,13,26,0.85)Backdrop overlays--text-primary#F0F0FFMain body text--text-secondary#A0A0C0Subtitles, descriptions, meta info--text-muted#606080Placeholders, disabled states--border-defaultrgba(255,255,255,0.08)Standard border--border-focus#6C47FFFocused input border--gradient-herolinear-gradient(135deg, #6C47FF 0%, #00D4FF 100%)Hero sections, CTAs--gradient-cardlinear-gradient(145deg, #1A1A2E, #252540)Premium card backgrounds7.3 Typography Scale
+TokenSizeWeightLine-HeightUsage--text-xs12px4001.5Metadata, timestamps, helper text--text-sm14px400/5001.5Body small, table content, labels--text-base16px4001.6Main body text--text-lg18px5001.5Card titles, section intros--text-xl20px6001.4Sub-headings, feature labels--text-2xl24px7001.3Section headings--text-3xl30px7001.2Page titles--text-4xl36px8001.15Hero subtitles--text-5xl48px8001.1Hero headings--text-6xl60px9001.0Marketing splash textPrimary font family: "Inter" (Google Fonts). Monospace: "Fira Code" (for prompt text display). Both are loaded via next/font or via preloaded <link> tags for zero-FOUT behavior.
+7.4 Spacing Scale
+Uses an 8px base unit. All spacing values are multiples of 4px: 4, 8, 12, 16, 24, 32, 48, 64, 80, 96, 128px. Component internal padding uses 12-24px. Section gaps use 64-96px. Page max-width: 1280px with 24px horizontal padding on mobile.
+7.5 Elevation & Shadow System
+LevelCSS ShadowUsageshadow-sm0 1px 3px rgba(0,0,0,0.3)Subtle card elevationshadow-md0 4px 16px rgba(0,0,0,0.4)Standard cards, dropdownsshadow-lg0 8px 32px rgba(0,0,0,0.5)Modals, popovers, featured cardsshadow-xl0 16px 64px rgba(0,0,0,0.6)Hero elements, primary CTA buttonsshadow-glow-primary0 0 24px rgba(108,71,255,0.4)Focused/active primary elementsshadow-glow-cyan0 0 24px rgba(0,212,255,0.3)Secondary accent glow effects7.6 Component Library (Design Tokens)
+Buttons
+VariantBackgroundTextBorderUse CasePrimarygradient-herowhitenoneMain CTA, purchase, submitSecondarytransparentprimary1px solid primarySecondary actions, cancelGhosttransparenttext-secondarynoneTertiary, navigation itemsDanger#EF4444whitenoneDelete, refund, destructiveSuccess#22C55EwhitenoneConfirm, approve, completeIcon-onlybg-surfacetext-primary1px solid border-defaultToolbar, compact actionsAll buttons have: 8px border-radius, 44px min height (accessibility), transition: all 200ms ease, and a visible focus ring (outline: 2px solid var(--color-primary), outline-offset: 2px).
+Cards
+Card TypeStyleUsagePack Cardgradient-card background, 12px radius, shadow-md, hover: shadow-glow-primary + translateY(-4px)Marketplace grid / listFeatured CardFull-width, gradient border (1px), large thumbnail, shadow-xlHomepage feature sectionStat Cardbg-surface, top border accent bar (4px), monospace number displayAdmin KPI dashboardReview Cardbg-elevated, star rating, verified badge, truncated bodyPack detail pageCategory CardIcon-forward, color accent, pack count pill, hover glowCategory browse gridForm Elements
+All inputs use: bg-elevated background, border-default border, 8px border-radius, 48px height for text inputs, 16px padding, border-focus on :focus. Error state adds a red left border and error message below. Success state adds a green checkmark icon inline.
+7.7 Dark/Light Mode
+Dark mode is the default and primary experience. Light mode uses a set of overridden CSS custom properties activated by a [data-theme="light"] attribute on the root element. Theme preference is persisted to localStorage and syncs with the OS prefers-color-scheme on first visit. The toggle is accessible via keyboard and screen reader.
+7.8 Responsive Breakpoints
+BreakpointMin WidthGrid ColumnsLayout Notesxs (mobile)0px1Full-width, stacked layoutsm (mobile-lg)480px1-2Some side-by-side elementsmd (tablet)768px2-3Sidebar becomes collapsiblelg (laptop)1024px3-4Standard desktop layoutxl (desktop)1280px4Full grid, max-width container2xl (wide)1536px4-5Expanded grids, wider content
+
+8. All Platform Screens
+?  Every screen listed below includes: layout description, all UI components, data requirements, and interaction notes. Screens are organized by user type.
+8.1 Public Screens
+SCR-001 | Homepage
+ElementSpecificationNav BarSticky top nav: logo, links (Explore, Categories, Pricing), Search icon, Login/Sign Up CTA. Transparent at top, bg-surface on scroll.Hero SectionFull-viewport-height, gradient background, large headline + subhead, two CTAs: "Browse Packs" (primary) + "See How It Works" (ghost). Animated floating cards in background.Stats BarHorizontal strip: total prompts, total packs, categories, active users - animated count-up on scroll-into-view.Featured PacksHorizontally scrolling row with 4 large pack cards. "View All Featured" link at right.Category Grid4-column grid (responsive) with icon, name, pack count. Hover: color glow + scale. Click: navigate to category page.Trending This WeekRanked list of 5 trending packs with rank badge, title, price, and download count.How It Works3-step horizontal flow: Browse ? Purchase ? Download. Each step has icon, title, description.Bestsellers CarouselAuto-playing carousel with 6 bestselling packs. Pause on hover.Social ProofReview quotes from 3 buyers, 5-star display, avatar, name. Static but styled to feel authentic.AI Tools We CoverLogo strip: ChatGPT, Claude, Midjourney, DALL-E, Gemini, Cursor, Notion AI, Runway. Infinite scroll animation.CTA BannerFull-width gradient banner: "Get 50+ Free Prompts - Create Your Account Today" with signup button.Footer4-column footer: logo+tagline, Product links, Company links, Legal. Newsletter subscribe form at bottom.SCR-002 | Explore / Browse Packs
+ElementSpecificationSidebar FiltersSticky left sidebar: Category multi-select, AI Tool filter, Price range slider ($0-$100), Rating filter (1-5 stars), Sort: Newest/Popular/Price. "Reset Filters" button.Results HeaderPack count, active filter pills (removable), Sort dropdown, View toggle (Grid/List).Pack Grid3-column responsive grid of Pack Cards. Each card: thumbnail, title, category badge, AI tool tags, star rating, price, download count, "Get Pack" button.Infinite ScrollLoad next page automatically when user reaches 80% of current list. Skeleton cards during loading.Active Filter PillsEach applied filter shown as a removable pill in the results header. "Clear All" button at end.No Results StateIllustrated empty state with "No packs match your filters." + suggestions and "Clear All Filters" button.Search BarProminent search bar at top with typeahead suggestions from Meilisearch.SCR-003 | Pack Detail Page
+ElementSpecificationBreadcrumbHome > Category > Pack Title (structured data markup for SEO)Hero SectionLeft: pack thumbnail, badges (Bestseller / New / Free). Right: title, AI tools, star rating with count, price with compare price, short description, "Buy Now" primary button, "Add to Wishlist" secondary.Tab NavigationTabs: Overview | Prompts Preview | Reviews | FAQOverview TabFull description, what's included list, who this is for, sample use cases.Prompts Preview TabShows 5 preview prompts with truncation. Remaining prompts blurred with "Purchase to Unlock All X Prompts" CTA overlay.Reviews TabStar histogram, average rating, filter by stars, paginated review cards.FAQ TabAccordion-style FAQ: format, refunds, compatible tools, license.Related PacksHorizontal scroll of 4 related packs from same category.Sticky Purchase BarAppears on mobile when hero scrolls out of view: title + price + "Buy Now" button.Social ShareTwitter/X, LinkedIn, copy link - small icon row below the price.Structured DataJSON-LD Product schema for Google rich results.SCR-004 | Category Page
+Inherits the Explore/Browse layout but pre-filters by the selected category. Includes category hero section with name, icon, color, description, and pack count. Subcategory chips shown if subcategories exist.
+SCR-005 | Search Results
+Full-page search with a prominent query bar (auto-focused), results split into "Packs" and "Prompts" tabs. Each prompt result shows the prompt snippet with the search term highlighted, and the parent pack title/price. Handles empty state, typo suggestions ("Did you mean..."), and recent searches stored in localStorage.
+SCR-006 | Pricing Page
+ElementSpecificationPricing TiersThree cards: Free (account + free packs only), Pro ($19/mo - 5 packs/month credit), Enterprise (custom - unlimited + priority support). Popular badge on Pro.Feature Comparison TableFull feature matrix comparing all tiers row by row.FAQCommon questions about billing, cancellation, refunds.CTAEach tier card has a distinct CTA button leading to signup / checkout.SCR-007 | Creator / Seller Profile
+Displays the platform's own creator profile with: avatar, display name, bio, total packs, total prompts, joined date, and a grid of all published packs. Future-ready for multi-seller expansion.
+SCR-008 | Trending Prompts
+Full-page trending prompts list ranked by the past 7 days of views, downloads, and purchases. Shows individual prompts (not just packs) with the source pack card linked. Filter by time range (24h / 7d / 30d) and category.
+8.2 Authentication Screens
+SCR-009 | Login Page
+Centered card on gradient background. Fields: Email, Password (with show/hide toggle). "Remember me" checkbox. Forgot Password link. Primary "Log In" button. Divider "or continue with". Social login buttons (Google OAuth). Link to Sign Up page. Error inline (wrong credentials, email not verified).
+SCR-010 | Sign Up Page
+Same layout as Login. Fields: Email, Password (strength meter), Confirm Password, Display Name (optional). Checkbox: agree to Terms. "Create Account" CTA. Post-submit: redirect to "Verify Your Email" prompt screen.
+SCR-011 | Email Verification
+Single-purpose screen with envelope icon, instructions to check email, and a "Resend Email" button (rate-limited to 1 per 60 seconds with countdown timer). Auto-redirect to dashboard after successful verification.
+SCR-012 | Forgot Password
+One input: Email address. On submit: success message regardless of whether email exists (security). Rate-limited to prevent enumeration.
+SCR-013 | Reset Password
+Accessed via email link. Fields: New Password (strength meter), Confirm Password. On success: redirect to Login with success toast.
+8.3 User Dashboard Screens
+SCR-014 | User Dashboard Home
+SectionContentWelcome BarGreeting with display name, current date, quick-stat: "You own X packs with Y total prompts."Recent PurchasesLast 3 purchased packs as cards with "Download" button and date.Continue Browsing4 recommended packs based on purchased categories.Saved PacksHorizontal scroll of wishlisted packs.Quick Actions"Browse New Packs", "View All Purchases", "Account Settings" - icon + label links.SCR-015 | My Purchases
+Full-page table/grid of all purchased packs. Columns: Pack thumbnail, title, category, purchase date, price paid, order ID, download count, Download button. Sortable. Searchable within purchases. Empty state: "No purchases yet - Browse packs to get started."
+SCR-016 | Download Center
+Grid of all downloadable files across all purchased packs. Per-pack section shows: PDF download button, ZIP download button, file sizes, re-download counter. Files served via time-limited signed S3 URLs (15-minute expiry). Download progress shown as a progress bar in the card. Shows "X downloads remaining" if a limit is set.
+SCR-017 | Saved / Wishlist
+Grid of saved packs. Each card has: pack info, "Remove from Saved" icon, "Buy Now" button. Empty state: illustrated icon + "Save packs you love - click the heart on any pack."
+SCR-018 | Account Settings
+TabFields / OptionsProfileAvatar upload, Display Name, Bio, Email (read-only with change-email flow).SecurityCurrent Password, New Password, Confirm - with strength indicator. Active sessions list with "Revoke" buttons.NotificationsToggles: Purchase receipts, new packs in saved categories, promotional emails, product updates.BillingSaved payment methods (Stripe hosted), billing history, plan management.Danger Zone"Delete My Account" - requires password confirmation, shows GDPR data export option.SCR-019 | Order Detail
+Full order receipt view: order ID, date, items with price snapshots, subtotal, discount, tax, total, payment method last 4. Download buttons for each pack in the order. Print button. Email receipt re-send button.
+SCR-020 | Write Review
+Modal or dedicated page. Star selector (interactive, animated). Title field (max 150 chars). Body field (max 1000 chars, character counter). Submit button. Appears only after verified purchase. Edit-review flow reuses the same UI.
+8.4 Admin Screens
+SCR-021 | Admin Layout
+The admin section uses a persistent left sidebar (collapsible) with nav groups: Overview, Content, Automation, Commerce, Users, Settings. Top bar shows current admin name, notifications bell (WebSocket-driven), and quick search. All admin screens are behind role=admin middleware on both frontend route guards and API.
+SCR-022 | Automation Dashboard (Primary Admin Screen)
+ComponentDetailLive Job QueueReal-time BullMQ queue visualization: Pending, Active, Completed, Failed counts. Animated progress bars for active jobs.KPI Row6 stat cards: Packs Generated Today, Prompts Generated Today, AI Cost Today (cents), Jobs in Queue, Failed Jobs (24h), Avg Generation Time.Generation TimelineLine chart of jobs completed per hour over the last 24 hours. Recharts component.Active Jobs TableScrollable table: Job Type, Status (animated badge), Pack (linked), Started, Duration, Progress %. "Cancel" action per row.Quick Trigger Panel"Generate New Pack" button with category dropdown and pack size selector. Triggers pipeline immediately.Category Quota PanelPer-category progress: Published / Target. Red highlight for under-quota categories.Cost TrackerRolling AI spend: Today / This Week / This Month. Per-job-type breakdown. Budget alert threshold setting.SCR-023 | AI Generation Queue
+Detailed view of all automation jobs. Filters: Status (all/pending/running/completed/failed/dead), Type, Date range, Pack name. Table columns: Job ID, Type, Pack, Status (with icon), Tokens Used, Cost, Duration, Retries, Actions (view log, retry, cancel). Expandable row shows full job payload and result JSON. Bulk actions: retry selected, delete dead jobs.
+SCR-024 | Prompt Pack Approval Panel
+ComponentDetailQueue Count BadgeProminent "X packs awaiting review" at top of page.Pack ListTable: Pack title, category, prompt count, generated, AI cost, preview image thumbnail. Click row to open review panel.Review Panel (Slide-over)Right slide-over panel: full pack details, all generated prompts (scrollable), metadata fields (all editable inline), thumbnail preview, pricing suggestion.Inline EditingAll text fields editable directly in the panel. Changes auto-saved with debounce.Action Bar"Approve & Publish" (green), "Approve as Draft" (blue), "Reject" (red with reason text field), "Skip for Now" (ghost).Batch ActionsSelect multiple packs, "Approve All Selected" or "Reject All Selected".Rejection ReasonsDropdown: Low quality, Inappropriate content, Duplicate, Needs editing. Plus free-text field.SCR-025 | Category Manager
+Full CRUD for categories. Table with drag-to-reorder (sort_order). Create/edit form: name, slug (auto-generated, editable), description, icon (icon picker), color (hex color picker), parent category, featured toggle. Publish/archive toggle per category. Deletion only allowed if pack_count === 0.
+SCR-026 | Pricing Controls
+Admin-configurable pricing rules. Default pack price by category and size tier. Bulk price update tool: select multiple packs, apply percentage increase/decrease. Coupon manager: create coupons with type (percent/fixed), usage limits, validity dates. Auto-pricing suggestion engine toggle (uses AI to suggest prices based on content).
+SCR-027 | File Generation Monitor
+ComponentDetailStatus BoardSummary cards: Total Files, Ready, Generating, Queued, Failed - with color-coded counts.File TableAll generated_files rows. Columns: Pack, File Type, Status (with icon), Size, Generated At, Download (test), Regenerate button.Failed Files PanelDedicated tab for failed files with error message inline. "Retry All Failed" batch action.Storage UsageTotal S3 storage used, broken down by file type. Progress bar vs allocated quota.SCR-028 | Marketplace Analytics
+SectionCharts / DataRevenue OverviewArea chart: daily revenue for selected date range. Total revenue, avg order value, refund rate.Pack PerformanceTable: pack title, views, purchases, conversion rate, revenue, avg rating. Sortable. Export to CSV.Sales FunnelFunnel chart: Page Views > Pack Views > Add to Cart > Purchase. Conversion rates between each step.Search AnalyticsTop search terms (with purchase rate per term), no-results searches, trending search terms.User CohortsNew vs Returning buyers. Repeat purchase rate. Most valuable users.Category BreakdownDonut chart: revenue split by category. Pack count by category bar chart.Date Range PickerPreset ranges: Today, 7d, 30d, 90d, Custom. All charts update on range change.SCR-029 | User Management
+Paginated user table. Columns: avatar, display name, email, role, status, joined, last login, purchase count, total spent. Click row for user detail panel. Actions: suspend, restore, elevate to admin, impersonate (super_admin only), view orders. Search by email or name. Filter by role and status.
+SCR-030 | Admin Pack Editor
+Full editing interface for any pack, regardless of status. Fields: all pack metadata, prompt list with inline editing, bulk prompt import (CSV/text paste), AI regenerate section (regenerate description, tags, or thumbnail), version history sidebar, moderation log timeline at bottom.
+SCR-031 | System Settings
+Setting GroupControlsAI ConfigurationAPI key management (masked), model selection (claude-3-5-sonnet, gpt-4o), temperature, max tokens per generation.Generation ScheduleCron schedule editor for auto-generation. Enable/disable per category. Pack generation quotas.Payment SettingsStripe publishable key, webhook secret, tax rate configuration, currency.Email SettingsSMTP or Resend configuration, from address, template previews.Storage SettingsS3 bucket, region, CDN domain, max file sizes.Rate LimitingPer-endpoint rate limit configuration.Feature FlagsToggle: reviews enabled, wishlist enabled, free packs enabled, social auth enabled.SCR-032 | Admin Notifications Center
+Dedicated page for all admin notifications. Types: new order, new review, job failure, moderation needed, low quota warning, high error rate alert. Read/unread state. Click to navigate to relevant screen. "Mark All Read" bulk action. Notification preferences panel to configure which events trigger WebSocket push vs email.
+
+
+9. Error States & Empty States
+9.1 Global Error States
+Error TypeHTTP CodeUI TreatmentRecovery Action404 Not Found404Full-page illustrated scene: broken robot, "Page Not Found", friendly message.Go to Homepage button, Search bar403 Forbidden403Lock icon, "Access Denied", message explains permission level.Go Back, Login button if unauthenticated500 Server Error500Astronaut floating in space scene, "Something Went Wrong on Our End".Retry button, Status Page link503 Service Unavailable503Maintenance mode page: gear icon, ETA if available.Status page link, email notification signupNetwork Error (offline)n/aTop banner: "You're offline - some features unavailable" with pulsing indicator.Auto-retry when connection restoredSession Expired401Modal overlay: "Your session has expired. Please log in again."Login button (preserves current page context)Payment Failedn/aDedicated payment failure screen with specific Stripe error messaging.Try Again, Use Different Card, Contact Support9.2 Form Validation States
+ScenarioTreatmentRequired field empty on submitRed border on field, error message below: "[Field] is required."Invalid email format"Please enter a valid email address." shown below field on blur.Password too weakStrength meter turns red, tooltip: "Password must be 8+ chars with number and symbol."Passwords don't matchError on Confirm Password field on blur.Email already registeredAPI error shown inline: "An account with this email already exists. Log in?"Coupon invalid or expiredCoupon field turns red: "This coupon is invalid or has expired."Coupon minimum not met"Spend $X more to use this coupon."Review already submittedSubmit button replaced with "You've already reviewed this pack. Edit your review."9.3 Empty States (per screen)
+ScreenEmpty State IllustrationMessagePrimary ActionMy PurchasesShopping cart with sparkles"No purchases yet. Find something you'll love.""Browse Packs" buttonWishlistHeart outline with dashes"Nothing saved yet. Hit ? on any pack to save it.""Explore Packs" buttonSearch ResultsMagnifying glass with question mark"No results for [query]. Try different keywords."Clear search / Related tagsCategory BrowseEmpty grid icon"No packs in this category yet. Check back soon!""Browse All Packs" buttonReviews TabStars outline"No reviews yet. Be the first to review!""Write a Review" (if purchased)Order HistoryReceipt with sparkles"No orders yet.""Start Shopping" buttonAdmin Approval QueueCheckmark in circle"You're all caught up! No packs waiting for review.""Trigger New Generation" buttonAdmin Job QueueEmpty queue animation"No jobs running. Queue is clear.""Trigger Generation" buttonAdmin User List (filtered)Person with search"No users match your filters.""Clear Filters" buttonNotificationsBell with zzz"No notifications. You're all caught up!"None neededDownload CenterCloud with arrow"Purchase a pack to see your downloads here.""Browse Packs" button9.4 Loading & Skeleton States
+Every data-fetching component must show a skeleton loader - never a blank screen. Skeleton components exactly mirror the shape of the loaded content: same card dimensions, same text line widths, same layout. The skeleton uses a shimmer animation (gradient from --bg-surface to --bg-elevated and back, 1.5s loop). Skeleton components are defined once per card type and reused across the codebase.
+ComponentSkeleton ShapePack CardRectangle thumbnail, 2 text lines, 1 short line (price), 1 button.Pack Detail HeroLarge square left, right: 3 text lines, 1 long, 2 short, button block.Category Grid4 square cards with 1 text line each.Stats Bar4 wide rectangles side by side.Review CardStars row, 2 text lines, 3 body lines.Admin Table Row5-column skeleton row matching table columns.Job Queue CardColored status bar, 3 text lines, progress bar.
+
+10. Animation & Micro-Interaction Specification
+10.1 Principles
+• All animations serve a purpose - they guide attention, confirm actions, or communicate status. No decoration-only animation.
+• Duration: micro-interactions 150-250ms; page transitions 300-400ms; complex sequences 500-800ms.
+• Easing: "ease-out" for entrances (elements decelerate into place). "ease-in" for exits. "ease-in-out" for morphs.
+• Respect prefers-reduced-motion: all animations are disabled or replaced with instant state changes when this OS flag is set.
+• Performance: use transform and opacity exclusively for GPU-composited animations. Never animate width, height, top, left, padding.
+10.2 Page Transitions
+TransitionAnimationDurationRoute enterFade-in + translateY(12px ? 0)300ms ease-outRoute exitFade-out + translateY(0 ? -8px)200ms ease-inModal openBackdrop fade-in + modal scale(0.95 ? 1.0) + opacity 0 ? 1280ms ease-outModal closeBackdrop fade-out + modal scale(1.0 ? 0.95) + opacity 1 ? 0220ms ease-inSlide-over open (Admin)translateX(100% ? 0) + backdrop fade320ms ease-outSlide-over closetranslateX(0 ? 100%)240ms ease-inDrawer/sidebar toggletranslateX with width transition280ms ease-in-outTab content switchFade + translateX(±20px)200ms ease-out10.3 Component Micro-Interactions
+ComponentInteractionAnimationPack Card (hover)Mouse enters cardtranslateY(-6px), shadow-lg ? shadow-glow-primary, 200msBuy Button (click)Purchase initiatedButton scales to 0.96, spinner replaces text, 150msBuy Button (success)Purchase completeScale back + checkmark icon fade-in, color transitions to success, 400msStar RatingHover over starsStars fill with color from left sequentially, 50ms staggerAdd to WishlistHeart clickHeart icon "beats" (scale 1 ? 1.4 ? 1), fill transitions, 300msCoupon ApplyValid coupon appliedGreen checkmark appears, price updates with count-down animationNav Search openSearch icon clickSearch bar expands from icon, overlay fades in, 280msFilter pill closeRemove filterPill shrinks and fades out, remaining pills reflow, 200msSkeleton ? ContentData loadsSkeleton fades out as real content fades in simultaneously, 300msToast notificationEvent triggersSlides in from bottom-right, auto-dismiss after 4s with progress barCount-up numbersStats scroll into viewNumbers count up from 0 to value over 1500ms using easeOutExpoProgress bar (files)Upload/generation progressWidth animates smoothly to new percentage, color changes at 100%Job status badgeStatus changes via WSBadge cross-fades between states, color transitions, 300msCarousel (Bestsellers)Auto-playSlides translate left, opacity cross-fade, 600ms every 4 secondsAccordion openFAQ item expandHeight 0 ? auto using max-height trick, opacity, 280msAdmin approval action"Approve" button clickRow slides out to right with green flash, count badge decrements10.4 Loading Sequences
+Homepage Initial Load
+12. Nav bar fades in immediately (0ms delay)
+13. Hero headline and CTA appear (100ms delay, translateY + fade)
+14. Stats bar counts up on intersection (300ms delay)
+15. Pack cards stagger in from left to right (50ms stagger per card)
+16. Category grid fades in as a group (500ms delay)
+Pack Detail Page Load
+17. Hero skeleton shown immediately
+18. Above-the-fold content replaces skeleton on API response
+19. Tab content loads on tab activation (lazy)
+20. Related packs load asynchronously after main content
+10.5 Animation Library
+Primary: Framer Motion for React component animations. Supplement: CSS custom properties for simple hover states. CSS @keyframes for skeleton shimmer and infinite marquee (AI tools strip). No GSAP dependency - keep bundle size lean.
+
+
+11. Security & Access Control
+11.1 Authentication
+• JWT access tokens: 15-minute expiry. RS256 signing algorithm. Stored in memory (not localStorage).
+• Refresh tokens: 30-day expiry. Stored in httpOnly, SameSite=Strict, Secure cookie. Rotated on every use (one-time use).
+• Password hashing: bcrypt with cost factor 12.
+• Email verification required before purchase access.
+• OAuth (Google): stores provider ID and email; no password hash created for OAuth users.
+• Rate limiting on auth endpoints: 10 attempts/15min per IP. Lockout after 20 fails/hr (soft lock + email alert).
+11.2 Authorization
+RoleCapabilitiesbuyerBrowse public content, purchase, download owned packs, write reviews for purchased packs, manage own account.adminAll buyer capabilities + full admin panel access (packs, automation, analytics, users, categories, pricing, files).super_adminAll admin capabilities + system settings, API key management, user impersonation, delete admin users.11.3 API Security
+• All admin routes require role in JWT payload. Role checked server-side on every request - never trust client-side role state.
+• CORS: explicit allowlist of frontend origin(s) only.
+• Helmet.js: sets all recommended HTTP security headers.
+• SQL injection: prevented by parameterized queries (pg library) + Prisma ORM abstraction.
+• XSS: all user content HTML-escaped before storage; Content-Security-Policy header set.
+• CSRF: SameSite cookie attribute provides protection; additional CSRF token for sensitive mutations.
+• Download URLs: S3 presigned URLs with 15-minute expiry. Download access verified against orders table before signing.
+11.4 Data Privacy
+• GDPR compliance: data export and account deletion endpoints. Privacy policy page with data retention disclosure.
+• PII fields (email, IP) never logged to application logs in plaintext.
+• Stripe handles all payment data - no card numbers stored on platform.
+• Analytics events: IP addresses stored for 90 days then anonymized via scheduled job.
+
+
+12. Performance & Scalability
+12.1 Frontend Performance Targets
+MetricTargetMeasurementFirst Contentful Paint (FCP)< 1.0sLighthouse on desktop with fast 3GLargest Contentful Paint (LCP)< 2.0sCore Web VitalsCumulative Layout Shift (CLS)< 0.05Core Web VitalsFirst Input Delay (FID)< 50msCore Web VitalsTime to Interactive (TTI)< 2.5sLighthouseJS Bundle Size (initial)< 200KB gzippedVite bundle analyzerAPI Response Time (P50)< 200msDatadog APMAPI Response Time (P95)< 800msDatadog APM12.2 Caching Strategy
+DataCache LayerTTLInvalidationPublished pack listRedis5 minutesOn pack status changePack detailRedis10 minutesOn pack updateCategory listRedis1 hourOn category CRUDHomepage featuredRedis15 minutesOn featured flag changeSearch resultsMeilisearch indexReal-time syncOn pack publish/updateStatic assetsCloudflare CDN1 year (hashed filenames)Deploy-time hash changeDownload URLsS3 presigned (client)15 minutesSingle use per downloadUser sessionRedis30 daysOn logout / password change12.3 Database Performance
+• All foreign key columns have indexes. All frequently-filtered columns are indexed.
+• analytics_events table partitioned by month (PARTITION BY RANGE on created_at). Old partitions detached and archived.
+• Denormalized counters (pack_count, total_downloads, avg_rating) maintained via PostgreSQL triggers to avoid expensive COUNT queries on page load.
+• Connection pooling via PgBouncer in transaction mode. Max 100 connections to PostgreSQL; API server pools 25.
+• Slow query log enabled for queries > 100ms. Reviewed weekly.
+12.4 Scalability Architecture
+The platform is designed to scale horizontally. The API server is stateless (all state in PostgreSQL + Redis), so multiple Node.js API instances can run behind a load balancer. BullMQ workers are separately scaled. The frontend is a static SPA served from CDN - it has zero server-side rendering cost.
+
+
+13. File Generation Pipeline
+13.1 PDF Generation Technical Spec
+AttributeValueEnginePuppeteer 22 (headless Chrome)Template formatHTML + Tailwind CSS compiled to inline stylesFontsInter (body) + Fira Code (prompt blocks) - loaded from local filesystem in PuppeteerPage sizeUS Letter (816 × 1056px at 96dpi)PDF optionsprintBackground: true, margin: 54px all sidesSectionsCover (1 page), TOC (1-2 pages), Prompts (N pages), Credits (1 page)Prompt layoutNumber badge + title + body in code block + use-case tag + dividerS3 upload pathfiles/{packId}/pack-{packId}-v{version}.pdfEstimated generation time15-45 seconds depending on prompt count13.2 ZIP Bundle Contents
+• pack-prompts.pdf - the full PDF generated above
+• prompts.txt - plain text export, one prompt per section, suitable for pasting
+• prompts.json - structured JSON array with all prompt fields (id, title, body, use_case, ai_tool)
+• README.md - usage guide, license terms, and platform link
+• LICENSE.txt - Personal Use License (non-commercial redistribution prohibited)
+13.3 Image Generation Spec
+AttributeValueEngineDALL-E 3 (primary) / Stable Diffusion SDXL (fallback)Thumbnail size400 × 400px (1:1)Preview image size1200 × 630px (Open Graph / hero)Style prompt template"Minimalist tech poster for an AI prompt pack about [category]. Dark background, [category color] accents, geometric shapes, professional, no text."Post-processingSharp.js: compress to WebP, quality 85, add platform watermark overlayStorage pathimages/{packId}/thumb.webp and images/{packId}/preview.webpFallbackIf AI image fails, use programmatic SVG thumbnail generated with pack title + category color
+
+14. Analytics & Reporting
+14.1 Event Taxonomy
+EventTriggerKey Propertiespage_viewEvery route changepage_path, referrer, utm_source, utm_campaignpack_viewPack detail page loadpack_id, category, source (search/browse/direct)searchSearch query submittedquery, results_count, category_filteradd_to_wishlistHeart button clickpack_id, price_centscheckout_startBuy button clickpack_id, price_cents, coupon_codepurchase_completeStripe webhook payment capturedorder_id, total_cents, item_countdownloadFile download initiatedpack_id, file_type, download_numberreview_submitReview form submittedpack_id, ratingadmin_approveAdmin approves packpack_id, time_in_queue_minutesjob_completedAutomation job finishesjob_type, duration_ms, tokens_used, cost_cents14.2 Key Admin Reports
+• Daily Revenue Report: orders, GMV, refunds, net revenue, new vs returning buyers.
+• Pack Performance: views, conversion rate, revenue, reviews per pack - sortable table.
+• Automation Efficiency: jobs per day, avg generation time, AI cost per pack, error rate.
+• User Growth: signups, active users (DAU/MAU), purchase conversion rate.
+• Search Intelligence: top queries with conversion rate; zero-result queries for content gap identification.
+
+
+15. Deployment & Infrastructure
+15.1 Environment Strategy
+EnvironmentPurposeInfrastructuredevelopmentLocal dev with hot reloadDocker Compose: Postgres + Redis + API + Vite dev serverstagingPre-production validationSingle VPS (4 CPU / 8GB) or Railway/Render free tierproductionLive platformSee Production Infrastructure below15.2 Production Infrastructure
+ServiceProviderSpecAPI ServerRailway / Render / VPS2× Node.js containers (2 CPU, 4GB each) behind load balancerBullMQ WorkersSame platform2× worker containers, independently scalablePostgreSQLSupabase or AWS RDSdb.t3.medium, automated backups, point-in-time recoveryRedisUpstash (serverless) or ElasticacheCache + queue brokerFile StorageAWS S3 + CloudFront CDNPrivate bucket, public CDN for images, private for downloadsFrontendVercel or Cloudflare PagesStatic SPA, global edge CDN, automatic deploy from GitSearchMeilisearch Cloud (managed)Synced via webhook on pack publish/updateEmailResend (primary)10,000 emails/month free tier; scales with volumeMonitoringGrafana Cloud + SentryMetrics, error tracking, uptime alertsCI/CDGitHub ActionsTest ? Build ? Deploy pipeline on main branch push15.3 CI/CD Pipeline
+21. Developer pushes to feature branch ? GitHub Actions runs lint + type-check + unit tests.
+22. PR merged to main ? integration tests run against staging DB.
+23. On tag v* ? production build, Docker image push, rolling deploy.
+24. Database migrations run automatically pre-deployment via migration script.
+25. Post-deploy: smoke tests hit 5 critical API endpoints; rollback triggered if any fail.
+15.4 Backup & Disaster Recovery
+• PostgreSQL: automated daily snapshots (30-day retention) + continuous WAL archiving (1-hour RPO).
+• Redis: persistence enabled (RDB snapshot every 15 minutes).
+• S3: versioning enabled on all buckets. Cross-region replication for production files.
+• Recovery Time Objective (RTO): < 2 hours for full system restore.
+
+
+16. Acceptance Criteria & QA
+16.1 Phase 1 (Database) - Done When
+• All migrations run cleanly on a fresh PostgreSQL 16 instance.
+• All foreign key constraints, indexes, and enum types verified by automated test suite.
+• Seed script populates 5 categories, 2 sample packs, 10 prompts, 1 admin user.
+• Database ERD diagram exported and version-controlled.
+16.2 Phase 2 (Backend) - Done When
+• All API endpoints return correct status codes and envelope shapes per spec.
+• Auth flows (register, login, refresh, logout) tested end-to-end.
+• A complete automation pipeline (trigger ? generate ? PDF ? listing) completes without errors.
+• Stripe checkout, webhook, and download flow tested in Stripe test mode.
+• Admin endpoints return 403 for non-admin users.
+• Rate limiting correctly rejects excess requests.
+• 90%+ test coverage on core business logic (generation, orders, downloads).
+16.3 Phase 3 (Frontend) - Done When
+• All 32 screens render without console errors on latest Chrome, Firefox, Safari.
+• Mobile layout verified on 375px (iPhone SE) and 768px (iPad) viewports.
+• All empty states and error states verified by temporarily returning empty API responses.
+• Lighthouse score = 90 on Performance, Accessibility, Best Practices, SEO for Homepage and Pack Detail.
+• All animations respect prefers-reduced-motion.
+• Purchase and download flow completed end-to-end in staging environment.
+• Admin approval flow: trigger generation ? receive in queue ? approve ? verify published on marketplace.
+16.4 Launch Checklist
+ItemOwnerStatusProduction database migratedBackendTODOStripe production keys configuredBackendTODOS3 bucket + CloudFront configuredInfraTODODomain + SSL certificateInfraTODOEmail templates testedBackendTODOInitial seed pack library generated (50+ packs)AutomationTODOTerms of Service + Privacy Policy pages liveProductTODOSentry error tracking connectedBackendTODOUptime monitoring configuredInfraTODOAdmin account createdBackendTODOSmoke tests passingQATODOGoogle Analytics / Plausible connectedFrontendTODO
+
+
+
+END OF DOCUMENT - PromptVault PRD v1.0
+This document is production-ready and covers all phases of development in full detail.
+PromptVault - AI Prompt Marketplace PRDCONFIDENTIAL - Internal Use Only
+

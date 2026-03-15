@@ -1,0 +1,72 @@
+modules = ["nodejs-20", "web", "bash", "postgresql-16"]
+
+[[artifacts]]
+id = "artifacts/api-server"
+
+[[artifacts]]
+id = "artifacts/mockup-sandbox"
+
+[deployment]
+router = "application"
+deploymentTarget = "autoscale"
+
+[deployment.postBuild]
+args = ["pnpm", "store", "prune"]
+env = { "CI" = "true" }
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "API Server"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=19275 BASE_PATH=/ pnpm --filter @workspace/promptvault run dev"
+waitForPort = 19275
+
+[[workflows.workflow]]
+name = "API Server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=5000 pnpm --filter @workspace/api-server run dev"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[agent]
+stack = "PNPM_WORKSPACE"
+expertMode = true
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000
+
+[nix]
+channel = "stable-25_05"
+
+[userenv]
+
+[userenv.production]
+JWT_SECRET = "a2979ec077c8b4bbf4aa5e804bbb0f4cb02d4c7bc4f4e4acbab4367165cc5ac9aa38c5c9a0b60817491ecb5c862cdb2c17e8b906da40d331d8cf1c273ce9b271"
+JWT_REFRESH_SECRET = "87503615f96b90948502c654261c3cd02c3667d0ed3f0952a7fce9a228bfc5262e549015bf3ff71fadc7ac1b6cf88467076d51c5dc42728230a836f7207e4408"
