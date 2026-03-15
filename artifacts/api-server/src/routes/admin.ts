@@ -130,20 +130,25 @@ router.get("/analytics", async (req: AuthRequest, res): Promise<void> => {
   const daysMap: Record<string, number> = { "7d": 7, "30d": 30, "90d": 90 };
   const days = daysMap[period] || 30;
 
+  if (typeof days !== "number" || isNaN(days) || days < 1 || days > 365) {
+    res.status(400).json({ error: "Invalid analytics period" });
+    return;
+  }
+
   const [revenueByDay, totalRevResult, totalOrdersResult, totalDownloadsResult, newUsersResult, topPacksResult] = await Promise.all([
     db.execute(sql`
       SELECT DATE(created_at) as date,
         COALESCE(SUM(total_cents), 0) as revenue_cents,
         COUNT(*) as orders
       FROM orders
-      WHERE status = 'COMPLETED' AND created_at >= NOW() - (${days} || ' days')::INTERVAL
+      WHERE status = 'COMPLETED' AND created_at >= NOW() - (INTERVAL '1 day' * ${days})
       GROUP BY DATE(created_at)
       ORDER BY date ASC
     `),
-    db.execute(sql`SELECT COALESCE(SUM(total_cents), 0) as total FROM orders WHERE status = 'COMPLETED' AND created_at >= NOW() - (${days} || ' days')::INTERVAL`),
-    db.execute(sql`SELECT COUNT(*) as count FROM orders WHERE created_at >= NOW() - (${days} || ' days')::INTERVAL`),
-    db.execute(sql`SELECT COALESCE(SUM(download_count), 0) as total FROM order_items WHERE created_at >= NOW() - (${days} || ' days')::INTERVAL`),
-    db.execute(sql`SELECT COUNT(*) as count FROM users WHERE created_at >= NOW() - (${days} || ' days')::INTERVAL`),
+    db.execute(sql`SELECT COALESCE(SUM(total_cents), 0) as total FROM orders WHERE status = 'COMPLETED' AND created_at >= NOW() - (INTERVAL '1 day' * ${days})`),
+    db.execute(sql`SELECT COUNT(*) as count FROM orders WHERE created_at >= NOW() - (INTERVAL '1 day' * ${days})`),
+    db.execute(sql`SELECT COALESCE(SUM(download_count), 0) as total FROM order_items WHERE created_at >= NOW() - (INTERVAL '1 day' * ${days})`),
+    db.execute(sql`SELECT COUNT(*) as count FROM users WHERE created_at >= NOW() - (INTERVAL '1 day' * ${days})`),
     db.execute(sql`
       SELECT p.id, p.title, p.slug, p.thumbnail_url, p.total_downloads, p.avg_rating, p.review_count,
         COALESCE(SUM(oi.price_cents), 0) as revenue_cents
