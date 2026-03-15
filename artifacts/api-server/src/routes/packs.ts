@@ -311,7 +311,7 @@ router.get("/packs/:slug/download", requireAuth, async (req: AuthRequest, res): 
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.end(pdfBuffer);
-  } catch (err) {
+  } catch (err: unknown) {
     logger.error({ err }, "PDF generation error");
     res.status(500).json({ error: "Failed to generate PDF" });
   }
