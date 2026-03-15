@@ -18,6 +18,27 @@ import {
 import { cn } from "@/lib/utils";
 import { formatDate } from "@/lib/utils";
 
+export interface Collection {
+  id: number;
+  userId: number;
+  title: string;
+  description: string | null;
+  coverImageUrl: string | null;
+  visibility: "public" | "private" | "followers";
+  itemCount: number;
+  followerCount: number;
+  isFeatured: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CollectionFormData {
+  id?: number;
+  title: string;
+  description: string;
+  visibility: string;
+}
+
 const VISIBILITY_OPTIONS = [
   { value: "public", label: "Public", icon: Globe, desc: "Anyone can see this collection" },
   { value: "private", label: "Private", icon: Lock, desc: "Only you can see this" },
@@ -31,14 +52,18 @@ function CollectionFormDialog({
   onSave,
 }: {
   open: boolean;
-  collection: any | null;
+  collection: Collection | null;
   onClose: () => void;
-  onSave: (data: any) => void;
+  onSave: (data: CollectionFormData) => void;
 }) {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    title: string;
+    description: string;
+    visibility: "public" | "private" | "followers";
+  }>({
     title: collection?.title || "",
     description: collection?.description || "",
-    visibility: collection?.visibility || "public",
+    visibility: (collection?.visibility as "public" | "private" | "followers") || "public",
   });
 
   const handleSave = () => {
@@ -83,7 +108,7 @@ function CollectionFormDialog({
                   <button
                     key={opt.value}
                     type="button"
-                    onClick={() => setForm(f => ({ ...f, visibility: opt.value }))}
+                    onClick={() => setForm(f => ({ ...f, visibility: opt.value as "public" | "private" | "followers" }))}
                     className={cn(
                       "w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-all",
                       form.visibility === opt.value
@@ -118,8 +143,8 @@ function CollectionCard({
   onEdit,
   onDelete,
 }: {
-  collection: any;
-  onEdit: (c: any) => void;
+  collection: Collection;
+  onEdit: (c: Collection) => void;
   onDelete: (id: number) => void;
 }) {
   const visOpt = VISIBILITY_OPTIONS.find(o => o.value === collection.visibility);
@@ -189,7 +214,7 @@ export default function DashboardCollectionsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingCollection, setEditingCollection] = useState<any | null>(null);
+  const [editingCollection, setEditingCollection] = useState<Collection | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["my-collections"],
@@ -202,7 +227,7 @@ export default function DashboardCollectionsPage() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: async (formData: any) => {
+    mutationFn: async (formData: CollectionFormData) => {
       const { id, ...body } = formData;
       const method = id ? "PATCH" : "POST";
       const url = id ? `/api/collections/${id}` : "/api/collections";
@@ -220,7 +245,7 @@ export default function DashboardCollectionsPage() {
       setDialogOpen(false);
       setEditingCollection(null);
     },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -237,14 +262,14 @@ export default function DashboardCollectionsPage() {
     },
   });
 
-  const collections: any[] = data?.collections || [];
+  const collections: Collection[] = data?.collections || [];
 
   const openCreate = () => {
     setEditingCollection(null);
     setDialogOpen(true);
   };
 
-  const openEdit = (collection: any) => {
+  const openEdit = (collection: Collection) => {
     setEditingCollection(collection);
     setDialogOpen(true);
   };
@@ -299,7 +324,7 @@ export default function DashboardCollectionsPage() {
           </div>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {collections.map((c: any) => (
+            {collections.map((c: Collection) => (
               <CollectionCard
                 key={c.id}
                 collection={c}
