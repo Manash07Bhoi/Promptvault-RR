@@ -1,3 +1,4 @@
+import { validateMagicBytes } from "../lib/upload-security.js";
 import { describe, it, expect } from "vitest";
 
 // Replicate the sanitization function from routes
@@ -120,5 +121,59 @@ describe("Price total calculation (integer math)", () => {
     const prices = [1999, 2999, 999];
     const sum = prices.reduce((a, b) => a + b, 0);
     expect(sum).toBe(5997);
+  });
+});
+
+
+
+describe("validateMagicBytes (File upload security)", () => {
+  it("accepts valid JPEG magic bytes", () => {
+    const buffer = Buffer.from([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46]);
+    expect(validateMagicBytes(buffer, "image/jpeg")).toBe(true);
+  });
+
+  it("accepts valid PNG magic bytes", () => {
+    const buffer = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52]);
+    expect(validateMagicBytes(buffer, "image/png")).toBe(true);
+  });
+
+  it("accepts valid WEBP magic bytes", () => {
+    const buffer = Buffer.from([0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50]); // RIFF....WEBP
+    expect(validateMagicBytes(buffer, "image/webp")).toBe(true);
+  });
+
+  it("accepts valid GIF87a magic bytes", () => {
+    const buffer = Buffer.from([0x47, 0x49, 0x46, 0x38, 0x37, 0x61, 0x01, 0x00, 0x01, 0x00]); // GIF87a...
+    expect(validateMagicBytes(buffer, "image/gif")).toBe(true);
+  });
+
+  it("accepts valid GIF89a magic bytes", () => {
+    const buffer = Buffer.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00, 0x01, 0x00]); // GIF89a...
+    expect(validateMagicBytes(buffer, "image/gif")).toBe(true);
+  });
+
+  it("rejects invalid buffer for a valid MIME type", () => {
+    const buffer = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); // Random bytes
+    expect(validateMagicBytes(buffer, "image/jpeg")).toBe(false);
+  });
+
+  it("rejects unknown MIME type", () => {
+    const buffer = Buffer.from([0xFF, 0xD8, 0xFF]);
+    expect(validateMagicBytes(buffer, "application/json")).toBe(false);
+  });
+
+  it("rejects mismatched MIME type (e.g. PNG bytes for JPEG)", () => {
+    const buffer = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]); // PNG
+    expect(validateMagicBytes(buffer, "image/jpeg")).toBe(false);
+  });
+
+  it("rejects empty buffer", () => {
+    const buffer = Buffer.alloc(0);
+    expect(validateMagicBytes(buffer, "image/png")).toBe(false);
+  });
+
+  it("rejects short/truncated buffer", () => {
+    const buffer = Buffer.from([0x89, 0x50, 0x4E]); // Only 3 bytes of PNG
+    expect(validateMagicBytes(buffer, "image/png")).toBe(false);
   });
 });
