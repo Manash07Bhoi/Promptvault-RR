@@ -150,8 +150,11 @@ check("TypeScript compiles without errors (api-server)", () => {
       cwd: ROOT, encoding: "utf8", stdio: "pipe",
     });
     return true;
-  } catch (err: any) {
-    const output = (err.stdout || err.stderr || "").slice(0, 500);
+  } catch (err: unknown) {
+    const isErrorWithOutput = err && typeof err === "object" && ("stdout" in err || "stderr" in err);
+    const stdout = isErrorWithOutput && "stdout" in err && typeof err.stdout === "string" ? err.stdout : "";
+    const stderr = isErrorWithOutput && "stderr" in err && typeof err.stderr === "string" ? err.stderr : "";
+    const output = (stdout || stderr || "").slice(0, 500);
     return `TypeScript errors:\n${output}`;
   }
 });
@@ -163,8 +166,11 @@ check("Frontend builds successfully", () => {
       cwd: ROOT, encoding: "utf8", stdio: "pipe",
     });
     return true;
-  } catch (err: any) {
-    const output = (err.stdout || err.stderr || "").slice(0, 500);
+  } catch (err: unknown) {
+    const isErrorWithOutput = err && typeof err === "object" && ("stdout" in err || "stderr" in err);
+    const stdout = isErrorWithOutput && "stdout" in err && typeof err.stdout === "string" ? err.stdout : "";
+    const stderr = isErrorWithOutput && "stderr" in err && typeof err.stderr === "string" ? err.stderr : "";
+    const output = (stdout || stderr || "").slice(0, 500);
     return `Build failed:\n${output}`;
   }
 });
