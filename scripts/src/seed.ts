@@ -361,11 +361,15 @@ async function seed() {
   }
 
   // Update pack counts in categories
-  for (const cat of existingCategories) {
-    const result = await db.execute(sql`SELECT COUNT(*) as count FROM packs WHERE category_id = ${cat.id} AND status = 'PUBLISHED'`);
-    const count = Number((result.rows[0] as any)?.count || 0);
-    await db.update(categoriesTable).set({ packCount: count }).where(eq(categoriesTable.id, cat.id));
-  }
+  await db.execute(sql`
+    UPDATE categories
+    SET pack_count = COALESCE((
+      SELECT COUNT(*)
+      FROM packs
+      WHERE packs.category_id = categories.id
+      AND packs.status = 'PUBLISHED'
+    ), 0)
+  `);
 
   // Add some reviews for packs
   const publishedPacks = await db.select().from(packsTable).where(eq(packsTable.status, "PUBLISHED"));
