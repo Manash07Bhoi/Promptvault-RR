@@ -131,14 +131,14 @@ router.post("/checkout/session", requireAuth, async (req: AuthRequest, res): Pro
         userAgent: req.get("user-agent"),
       }).returning();
 
-      for (const pack of packs) {
-        await db.insert(orderItemsTable).values({
+      await db.insert(orderItemsTable).values(
+        packs.map((pack) => ({
           orderId: order.id,
           packId: pack.id,
           priceCents: pack.priceCents,
           titleSnapshot: pack.title,
-        });
-      }
+        }))
+      );
 
       res.json({
         orderId: order.id,
@@ -166,18 +166,24 @@ router.post("/checkout/session", requireAuth, async (req: AuthRequest, res): Pro
     userAgent: req.get("user-agent"),
   }).returning();
 
-  for (const pack of packs) {
-    await db.insert(orderItemsTable).values({
+  await db.insert(orderItemsTable).values(
+    packs.map((pack) => ({
       orderId: order.id,
       packId: pack.id,
       priceCents: pack.priceCents,
       titleSnapshot: pack.title,
-    });
+    }))
+  );
 
-    await db.update(packsTable)
-      .set({ totalDownloads: (pack.totalDownloads || 0) + 1, totalRevenueCents: (pack.totalRevenueCents || 0) + pack.priceCents })
-      .where(eq(packsTable.id, pack.id));
-  }
+  await db.execute(sql`
+    UPDATE packs
+    SET
+      total_downloads = COALESCE(packs.total_downloads, 0) + 1,
+      total_revenue_cents = COALESCE(packs.total_revenue_cents, 0) + order_items.price_cents
+    FROM order_items
+    WHERE packs.id = order_items.pack_id
+      AND order_items.order_id = ${order.id}
+  `);
 
   if (appliedCoupon) {
     // Atomic increment — prevents race condition on single-use coupons
@@ -298,15 +304,15 @@ router.post("/checkout/webhook", async (req, res): Promise<void> => {
           })
           .where(eq(ordersTable.id, order.id));
 
-        const items = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
-        for (const item of items) {
-          const [pack] = await db.select().from(packsTable).where(eq(packsTable.id, item.packId)).limit(1);
-          if (pack) {
-            await db.update(packsTable)
-              .set({ totalDownloads: (pack.totalDownloads || 0) + 1, totalRevenueCents: (pack.totalRevenueCents || 0) + item.priceCents })
-              .where(eq(packsTable.id, pack.id));
-          }
-        }
+        await db.execute(sql`
+          UPDATE packs
+          SET
+            total_downloads = COALESCE(packs.total_downloads, 0) + 1,
+            total_revenue_cents = COALESCE(packs.total_revenue_cents, 0) + order_items.price_cents
+          FROM order_items
+          WHERE packs.id = order_items.pack_id
+            AND order_items.order_id = ${order.id}
+        `);
 
         // Atomically increment coupon usesCount — prevents race condition on limited-use coupons
         const sessionMeta = session.metadata || {};
