@@ -51,8 +51,8 @@ interface QueryTopPackResult {
 }
 
 // Defence-in-depth: apply auth + admin check on every handler
-router.use(requireAuth as any);
-router.use(requireAdmin as any);
+router.use((req, res, next) => requireAuth(req as AuthRequest, res, next));
+router.use((req, res, next) => requireAdmin(req as AuthRequest, res, next));
 
 function formatPack(pack: any, category?: any) {
   return {
