@@ -7,3 +7,4 @@ export * from "./reviews";
 export * from "./automation";
 export * from "./misc";
 export * from "./social";
+export * from "./phase2";
