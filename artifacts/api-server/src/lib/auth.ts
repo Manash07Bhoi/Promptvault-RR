@@ -2,8 +2,15 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 
-const JWT_SECRET = process.env.JWT_SECRET || "promptvault-dev-secret-change-in-production-min-32-chars!";
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || "promptvault-refresh-dev-secret-change-in-prod-min-32-chars!";
+if (!process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET environment variable is required.");
+}
+if (!process.env.JWT_REFRESH_SECRET) {
+  throw new Error("JWT_REFRESH_SECRET environment variable is required.");
+}
+
+const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 
 const BCRYPT_ROUNDS = 12;
 
