@@ -1,0 +1,1 @@
+- Refactored SQL queries in the analytics endpoint to use parameterized interval arithmetic (INTERVAL '1 day' * ${days}) instead of string concatenation, preventing SQL injection anti-patterns.\n- Added explicit type and bounds checking for interval parameters as a defense-in-depth measure.
