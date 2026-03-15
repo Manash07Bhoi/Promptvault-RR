@@ -8,6 +8,8 @@ import { logger } from "../utils/logger.js";
 let initialized = false;
 
 export function initSentry(): void {
+  if (initialized) return;
+
   const dsn = process.env.SENTRY_DSN;
   if (!dsn) {
     logger.info("Sentry DSN not set — error tracking disabled");
