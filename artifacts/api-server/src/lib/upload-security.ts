@@ -45,8 +45,19 @@ export function generateSecureFilename(originalName: string, mimeType: string): 
  * Sanitize original filename to prevent path traversal attacks.
  */
 export function sanitizeFilename(name: string): string {
-  // Remove directory traversal, null bytes, and restrict to safe chars
-  return path.basename(name).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 200);
+  // Normalize Windows backslashes to forward slashes for cross-platform basename extraction
+  const normalized = name.replace(/\\/g, "/");
+
+  // Extract basename, remove null bytes, and restrict to safe chars
+  let sanitized = path.basename(normalized).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 200);
+
+  // Ensure the filename has at least one alphanumeric character
+  // If it's just dots/underscores/dashes, or empty, fallback to a safe default
+  if (!/[a-zA-Z0-9]/.test(sanitized)) {
+    return "upload";
+  }
+
+  return sanitized;
 }
 
 /**
