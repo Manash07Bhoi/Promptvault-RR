@@ -53,13 +53,18 @@ function formatPack(pack: any, category?: any) {
   };
 }
 
+// ⚡ Bolt: Optimized checkPurchased to use a single JOIN query.
+// This reduces latency by avoiding two roundtrips to the DB, saves memory,
+// and eliminates a silent bug where users with >50 orders wouldn't get access.
 async function checkPurchased(userId: number, packId: number): Promise<boolean> {
-  const orders = await db.select({ id: ordersTable.id }).from(ordersTable)
-    .where(and(eq(ordersTable.userId, userId), eq(ordersTable.status, "COMPLETED")))
-    .limit(50);
-  if (orders.length === 0) return false;
-  const items = await db.select({ id: orderItemsTable.id }).from(orderItemsTable)
-    .where(and(inArray(orderItemsTable.orderId, orders.map(o => o.id)), eq(orderItemsTable.packId, packId)))
+  const items = await db.select({ id: orderItemsTable.id })
+    .from(orderItemsTable)
+    .innerJoin(ordersTable, eq(orderItemsTable.orderId, ordersTable.id))
+    .where(and(
+      eq(ordersTable.userId, userId),
+      eq(ordersTable.status, "COMPLETED"),
+      eq(orderItemsTable.packId, packId)
+    ))
     .limit(1);
   return items.length > 0;
 }
