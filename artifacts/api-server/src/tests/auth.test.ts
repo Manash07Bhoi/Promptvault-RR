@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   hashPassword,
   verifyPassword,
@@ -7,11 +7,6 @@ import {
   verifyRefreshToken,
   generateToken,
 } from "../lib/auth.js";
-
-beforeAll(() => {
-  process.env.JWT_SECRET = "test-super-secret-value-at-least-32-chars!!";
-  process.env.JWT_REFRESH_SECRET = "test-super-refresh-secret-value-at-least-32-chars!!";
-});
 
 describe("hashPassword / verifyPassword", () => {
   it("hashes a password and verifies it correctly", async () => {
