@@ -253,7 +253,7 @@ router.post("/creator/packs/:id/prompts", requireAuth, async (req: AuthRequest, 
   if (!body?.trim()) { res.status(400).json({ error: "body is required" }); return; }
 
   // Extract {{variable}} patterns from body
-  const variables = [...new Set((body.match(/\{\{(\w+)\}\}/g) || []).map((v: string) => v.replace(/[{}]/g, "")))] as string[];
+  const variables = [...new Set((body.match(/\{\{(\w{1,64})\}\}/g) || []).map((v: string) => v.replace(/[{}]/g, "")))] as string[];
 
   const [existing] = await db.select({ count: sql<number>`count(*)` }).from(promptsTable).where(eq(promptsTable.packId, packId));
   const sortOrder = Number(existing?.count || 0);
@@ -294,7 +294,7 @@ router.patch("/creator/packs/:id/prompts/:promptId", requireAuth, async (req: Au
 
   const { title, body, aiTool, useCase } = req.body;
   const variables = body
-    ? ([...new Set((body.match(/\{\{(\w+)\}\}/g) || []).map((v: string) => v.replace(/[{}]/g, "")))] as string[])
+    ? ([...new Set((body.match(/\{\{(\w{1,64})\}\}/g) || []).map((v: string) => v.replace(/[{}]/g, "")))] as string[])
     : existing.variables;
 
   const [updated] = await db.update(promptsTable).set({
