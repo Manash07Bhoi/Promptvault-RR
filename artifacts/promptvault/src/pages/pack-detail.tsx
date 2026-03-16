@@ -74,6 +74,7 @@ function PromptCard({ prompt, index, isPurchased }: { prompt: any; index: number
               onClick={handleCopy}
               className="ml-3 p-2 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground shrink-0"
               title="Copy prompt"
+              aria-label="Copy prompt"
             >
               {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
             </button>
