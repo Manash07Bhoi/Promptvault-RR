@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, or, desc, sql } from "drizzle-orm";
+import { eq, and, or, desc, sql, inArray } from "drizzle-orm";
 import {
   db, usersTable, conversationsTable, directMessagesTable,
   ordersTable, orderItemsTable, packsTable
@@ -64,26 +64,46 @@ router.get("/messages/conversations", requireAuth, async (req: AuthRequest, res)
     ))
     .orderBy(desc(conversationsTable.lastMessageAt));
 
-  // Enrich with other participant info
-  const enriched = await Promise.all(convos.map(async (c) => {
-    const otherId = c.participant1Id === userId ? c.participant2Id : c.participant1Id;
-    const [other] = await db.select({
+  const otherIds = Array.from(new Set(convos.map(c =>
+    c.participant1Id === userId ? c.participant2Id : c.participant1Id
+  )));
+
+  let userMap: Record<number, any> = {};
+  let lastMsgMap: Record<number, any> = {};
+
+  if (convos.length > 0) {
+    const users = await db.select({
       id: usersTable.id,
       displayName: usersTable.displayName,
       username: usersTable.username,
       avatarUrl: usersTable.avatarUrl,
       isVerified: usersTable.isVerified,
-    }).from(usersTable).where(eq(usersTable.id, otherId)).limit(1);
+    })
+      .from(usersTable)
+      .where(inArray(usersTable.id, otherIds));
+    userMap = Object.fromEntries(users.map(u => [u.id, u]));
 
-    // Get last message preview
-    const [lastMsg] = await db.select({
+    const convoIds = convos.map(c => c.id);
+    const lastMessages = await db.selectDistinctOn([directMessagesTable.conversationId], {
+      conversationId: directMessagesTable.conversationId,
       body: directMessagesTable.body,
       senderId: directMessagesTable.senderId,
       createdAt: directMessagesTable.createdAt,
-    }).from(directMessagesTable)
-      .where(eq(directMessagesTable.conversationId, c.id))
-      .orderBy(desc(directMessagesTable.createdAt))
-      .limit(1);
+    })
+      .from(directMessagesTable)
+      .where(inArray(directMessagesTable.conversationId, convoIds))
+      .orderBy(directMessagesTable.conversationId, desc(directMessagesTable.createdAt));
+
+    lastMsgMap = Object.fromEntries(lastMessages.map(m => [m.conversationId, m]));
+  }
+
+  // Enrich with other participant info
+  const enriched = convos.map((c) => {
+    const otherId = c.participant1Id === userId ? c.participant2Id : c.participant1Id;
+    const other = userMap[otherId] || null;
+
+    // Get last message preview
+    const lastMsg = lastMsgMap[c.id];
 
     const unreadCount = c.participant1Id === userId ? c.participant1Unread : c.participant2Unread;
 
@@ -99,7 +119,7 @@ router.get("/messages/conversations", requireAuth, async (req: AuthRequest, res)
       lastMessageAt: c.lastMessageAt?.toISOString(),
       createdAt: c.createdAt.toISOString(),
     };
-  }));
+  });
 
   res.json({ conversations: enriched });
 });
